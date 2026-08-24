@@ -20,14 +20,16 @@ import { normalizeReasoningEffort, normalizeStreamPartialImages, parseDefaultApi
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './importableConfigUrl'
 
-const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+export const DEFAULT_PIXEL_BASE_URL = 'https://api.ai-pixel.online/v1'
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
+const RAW_DEFAULT_API_KEY = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_KEY)
 const DEFAULT_OPENAI_API_PROXY = readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
 const DOCKER_DEPLOYMENT = readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT) === 'true'
 const DEFAULT_API_URL_PATCH = isImportableConfigUrl(RAW_DEFAULT_API_URL)
   ? null
-  : parseDefaultApiUrl(RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : OPENAI_DEFAULT_BASE_URL))
+  : parseDefaultApiUrl(RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : DEFAULT_PIXEL_BASE_URL))
 const DEFAULT_BASE_URL = DEFAULT_API_URL_PATCH?.baseUrl ?? ''
+const DEFAULT_API_KEY = DEFAULT_API_URL_PATCH?.apiKey ?? RAW_DEFAULT_API_KEY
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-sol'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
@@ -112,7 +114,7 @@ export function normalizeAgentMaxToolRounds(value: unknown, fallback: number | u
 }
 
 export function hasDefaultPresetConfig(): boolean {
-  return Boolean(RAW_DEFAULT_API_URL) || DEFAULT_OPENAI_API_PROXY
+  return Boolean(RAW_DEFAULT_API_URL || RAW_DEFAULT_API_KEY) || DEFAULT_OPENAI_API_PROXY
 }
 
 export function getDefaultApiProfileId(settings: Partial<AppSettings> | unknown): string | null {
@@ -359,10 +361,10 @@ export function createDefaultOpenAIProfile(overrides: Partial<ApiProfile> = {}):
 
   return {
     id: DEFAULT_OPENAI_PROFILE_ID,
-    name: DEFAULT_API_URL_PATCH?.name ?? '默认',
+    name: DEFAULT_API_URL_PATCH?.name ?? 'Pixel API',
     provider: 'openai',
     baseUrl: DEFAULT_BASE_URL,
-    apiKey: DEFAULT_API_URL_PATCH?.apiKey ?? '',
+    apiKey: DEFAULT_API_KEY,
     model: DEFAULT_API_URL_PATCH?.model ?? DEFAULT_IMAGES_MODEL,
     timeout: DEFAULT_API_TIMEOUT,
     reasoningEffort: DEFAULT_API_URL_PATCH?.reasoningEffort,
@@ -656,7 +658,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   const legacyApiMode: ApiMode = record.apiMode === 'responses' ? 'responses' : 'images'
   const legacyProfile = createDefaultOpenAIProfile({
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : '',
+    apiKey: typeof record.apiKey === 'string' ? record.apiKey : DEFAULT_API_KEY,
     model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_IMAGES_MODEL,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : DEFAULT_API_TIMEOUT,
     apiMode: legacyApiMode,
@@ -861,10 +863,10 @@ export function validateApiProfile(profile: ApiProfile): string | null {
 
 function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
   return profile.id === DEFAULT_OPENAI_PROFILE_ID &&
-    profile.name === '默认' &&
+    profile.name === (DEFAULT_API_URL_PATCH?.name ?? 'Pixel API') &&
     profile.provider === 'openai' &&
     profile.baseUrl === DEFAULT_BASE_URL &&
-    profile.apiKey === '' &&
+    profile.apiKey === DEFAULT_API_KEY &&
     profile.model === DEFAULT_IMAGES_MODEL &&
     profile.timeout === DEFAULT_API_TIMEOUT &&
     profile.apiMode === 'images' &&
@@ -1215,7 +1217,7 @@ export function mergePresetImportedSettings(
 
 export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   baseUrl: DEFAULT_BASE_URL,
-  apiKey: DEFAULT_API_URL_PATCH?.apiKey ?? '',
+  apiKey: DEFAULT_API_KEY,
   model: DEFAULT_API_URL_PATCH?.model ?? DEFAULT_IMAGES_MODEL,
   timeout: DEFAULT_API_TIMEOUT,
   apiMode: DEFAULT_API_URL_PATCH?.apiMode ?? 'images',

@@ -2,12 +2,18 @@
   "customProviders": [],
   "profiles": [
     {
-      "id": "example-openai",
-      "name": "示例配置",
+      "id": "default-openai",
+      "name": "Pixel API",
       "provider": "openai",
-      "baseUrl": "https://api.example.com/v1",
+      "baseUrl": "https://api.ai-pixel.online/v1",
       "model": "gpt-image-2",
+      "timeout": 600,
       "apiMode": "images",
+      "codexCli": false,
+      "apiProxy": false,
+      "streamImages": false,
+      "streamPartialImages": 1,
+      "transparentBackgroundMethod": "api",
       "isDefault": true
     }
   ]

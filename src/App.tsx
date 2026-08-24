@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { initStore, restoreExplicitPresetConfig, useStore } from './store'
+import { useEffect, useState } from 'react'
+import { initStore, restoreExplicitPresetConfig, setPageLifecycleEnding, useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, getExplicitUrlSettingsIds, hasUrlSettingParams } from './lib/urlSettings'
 import { createDefaultOpenAIProfile, hasDefaultPresetConfig, isAgentTextApiProfile, normalizeSettings } from './lib/apiProfiles'
 import { getCustomProviderConfigUrl, hasEmbeddedDefaultConfig, loadCustomProviderSettingsFromUrl, loadEmbeddedDefaultConfig } from './lib/customProviderConfigUrl'
@@ -21,10 +21,12 @@ import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import { FavoriteCollectionPickerModal, FavoriteCollectionsView, ManageCollectionsModal } from './components/FavoriteCollections'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
+import ApiKeyPromptModal from './components/ApiKeyPromptModal'
 
 let defaultConfigImportStarted = false
 
 export default function App() {
+  const [appReady, setAppReady] = useState(false)
   const appMode = useStore((s) => s.appMode)
   const filterFavorite = useStore((s) => s.filterFavorite)
   const activeFavoriteCollectionId = useStore((s) => s.activeFavoriteCollectionId)
@@ -116,11 +118,26 @@ export default function App() {
         console.warn('Failed to import preset config:', error)
         setPresetConfig(null)
         const state = useStore.getState()
-        void applyUrlSettings(state.settings).then((settings) => {
+        return applyUrlSettings(state.settings).then((settings) => {
           useStore.getState().setSettings(settings)
           clearAppliedUrlSettings()
         })
       })
+      .finally(() => setAppReady(true))
+  }, [])
+
+  useEffect(() => {
+    const handlePageHide = () => setPageLifecycleEnding(true)
+    const handlePageShow = () => setPageLifecycleEnding(false)
+
+    window.addEventListener('beforeunload', handlePageHide)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('pageshow', handlePageShow)
+    return () => {
+      window.removeEventListener('beforeunload', handlePageHide)
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
   }, [])
 
   useEffect(() => {
@@ -158,6 +175,7 @@ export default function App() {
       <Toast />
       <MaskEditorModal />
       <ImageContextMenu />
+      <ApiKeyPromptModal appReady={appReady} />
     </>
   )
 }

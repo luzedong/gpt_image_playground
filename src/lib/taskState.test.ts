@@ -76,6 +76,15 @@ describe('task lifecycle patches', () => {
     expect(result.tasks.find((item) => item.id === 'custom-sync-running')).toMatchObject({ status: 'error', error: '请求中断' })
     expect(result.tasks.find((item) => item.id === 'done-task')).toEqual(doneTask)
   })
+
+  it('preserves synchronous running tasks when the caller will resume them', () => {
+    const running = task({ id: 'openai-running', apiProvider: 'openai', status: 'running', finishedAt: null, elapsed: null })
+
+    const result = markInterruptedOpenAIRunningTasks([running], 10_000, { preserveRunning: true })
+
+    expect(result.tasks[0]).toEqual(running)
+    expect(result.interruptedTasks).toEqual([running])
+  })
 })
 
 describe('task actual params', () => {

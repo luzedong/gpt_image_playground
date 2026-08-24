@@ -75,6 +75,9 @@ const SUPPORT_PROMPT_IMAGE_THRESHOLD = 50
 const falRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const openAIWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const activeTaskExecutions = new Set<string>()
+let pageLifecycleEnding = false
+let pageLifecycleGeneration = 0
 const agentRoundControllers = new Map<string, AbortController>()
 const agentRecoveryContinuations = new Set<string>()
 const deletedActiveAgentTasks = new Map<string, { task: TaskRecord; controller: AbortController }>()
@@ -533,11 +536,11 @@ export const useStore = create<AppState>()(
         if (settings.agentApiConfigMode === 'off' && activeProfile.provider === 'openai' && activeProfile.apiMode !== 'responses') {
           state.setConfirmDialog({
             title: '需要 Responses API 配置',
-            message: `当前配置「${activeProfile.name}」使用的是 Images API，仅支持生成图片，无 Agent 模式需要的对话能力。\n\n请前往 API 配置页，将当前配置调整为 Responses API，或切换/新建一个支持 Responses API 的配置。`,
+            message: `当前配置「${activeProfile.name}」使用的是 Images API，只负责生图和编辑图，不能作为 Agent 的语言模型。\n\n请前往 Agent 配置页新建或选择一套支持 Responses API 的文本模型配置；Pixel 的图像配置可以继续保留，二者可在混合模式中组合使用。`,
             confirmText: '去设置',
             cancelText: '取消',
             action: () => {
-              useStore.getState().setShowSettings(true, 'api')
+              useStore.getState().setShowSettings(true, 'agent')
             },
           })
           return
@@ -588,53 +591,61 @@ export const useStore = create<AppState>()(
       restorePresetProvider: (id) => set((state) => ({
         dismissedPresetProviderIds: state.dismissedPresetProviderIds.filter((item) => item !== id),
       })),
-      setSettings: (s) => set((st) => {
-        const previous = normalizeSettings(st.settings)
-        const incoming = s as Partial<AppSettings>
-        const hasLegacyOverrides =
-          incoming.baseUrl !== undefined ||
-          incoming.apiKey !== undefined ||
-          incoming.model !== undefined ||
-          incoming.timeout !== undefined ||
-          incoming.apiMode !== undefined ||
-          incoming.codexCli !== undefined ||
-          incoming.apiProxy !== undefined ||
-          incoming.streamImages !== undefined ||
-          incoming.streamPartialImages !== undefined
-        const merged = normalizeSettings({ ...previous, ...incoming })
-        if (hasLegacyOverrides && incoming.profiles === undefined) {
-          merged.profiles = merged.profiles.map((profile) =>
-            profile.id === merged.activeProfileId
-              ? {
-                  ...profile,
-                  baseUrl: incoming.baseUrl ?? profile.baseUrl,
-                  apiKey: incoming.apiKey ?? profile.apiKey,
-                  model: incoming.model ?? profile.model,
-                  timeout: incoming.timeout ?? profile.timeout,
-                  apiMode: incoming.apiMode === 'images' || incoming.apiMode === 'responses' ? incoming.apiMode : profile.apiMode,
-                  codexCli: incoming.codexCli ?? profile.codexCli,
-                  apiProxy: incoming.apiProxy ?? profile.apiProxy,
-                  streamImages: incoming.streamImages ?? profile.streamImages,
-                  streamPartialImages: incoming.streamPartialImages ?? profile.streamPartialImages,
-                }
-              : profile,
+      setSettings: (s) => {
+        let shouldResumeTasks = false
+        set((st) => {
+          const previous = normalizeSettings(st.settings)
+          const incoming = s as Partial<AppSettings>
+          const hasLegacyOverrides =
+            incoming.baseUrl !== undefined ||
+            incoming.apiKey !== undefined ||
+            incoming.model !== undefined ||
+            incoming.timeout !== undefined ||
+            incoming.apiMode !== undefined ||
+            incoming.codexCli !== undefined ||
+            incoming.apiProxy !== undefined ||
+            incoming.streamImages !== undefined ||
+            incoming.streamPartialImages !== undefined
+          const merged = normalizeSettings({ ...previous, ...incoming })
+          if (hasLegacyOverrides && incoming.profiles === undefined) {
+            merged.profiles = merged.profiles.map((profile) =>
+              profile.id === merged.activeProfileId
+                ? {
+                    ...profile,
+                    baseUrl: incoming.baseUrl ?? profile.baseUrl,
+                    apiKey: incoming.apiKey ?? profile.apiKey,
+                    model: incoming.model ?? profile.model,
+                    timeout: incoming.timeout ?? profile.timeout,
+                    apiMode: incoming.apiMode === 'images' || incoming.apiMode === 'responses' ? incoming.apiMode : profile.apiMode,
+                    codexCli: incoming.codexCli ?? profile.codexCli,
+                    apiProxy: incoming.apiProxy ?? profile.apiProxy,
+                    streamImages: incoming.streamImages ?? profile.streamImages,
+                    streamPartialImages: incoming.streamPartialImages ?? profile.streamPartialImages,
+                  }
+                : profile,
+            )
+          }
+          const effectiveDismissedPresetProviderIds = st.dismissedPresetProviderIds.filter((id) =>
+            !isPresetProviderDeletionPrevented(id, previous.profiles),
           )
-        }
-        const effectiveDismissedPresetProviderIds = st.dismissedPresetProviderIds.filter((id) =>
-          !isPresetProviderDeletionPrevented(id, previous.profiles),
-        )
-        const settings = normalizeSettings(enforcePresetConfigPolicy(merged, {
-          dismissedPresetProviderIds: effectiveDismissedPresetProviderIds,
-        }))
-        const shouldClearReusedProfile = st.reusedTaskApiProfileId && settings.activeProfileId === st.reusedTaskApiProfileId
-        return {
-          settings,
-          ...(shouldClearReusedProfile
-            ? { reusedTaskApiProfileId: null, reusedTaskApiProfileName: null, reusedTaskApiProfileMissing: false }
-            : {}),
-        }
-      }),
+          const settings = normalizeSettings(enforcePresetConfigPolicy(merged, {
+            dismissedPresetProviderIds: effectiveDismissedPresetProviderIds,
+          }))
+          shouldResumeTasks = settings.profiles.some((profile) =>
+            Boolean(profile.apiKey.trim()) && !previous.profiles.find((item) => item.id === profile.id)?.apiKey.trim(),
+          )
+          const shouldClearReusedProfile = st.reusedTaskApiProfileId && settings.activeProfileId === st.reusedTaskApiProfileId
+          return {
+            settings,
+            ...(shouldClearReusedProfile
+              ? { reusedTaskApiProfileId: null, reusedTaskApiProfileName: null, reusedTaskApiProfileMissing: false }
+              : {}),
+          }
+        })
+        if (shouldResumeTasks) queueMicrotask(resumePendingTasks)
+      },
       setPresetImportedSettings: async (importedSettings, transform) => {
+        let shouldResumeTasks = false
         set((state) => {
           const presetIds = getPresetProfileIds()
           const presetProviderIds = getPresetProviderIds()
@@ -657,6 +668,9 @@ export const useStore = create<AppState>()(
             normalizeSettings(transform?.(merged.settings) ?? merged.settings),
             { dismissedPresetProviderIds: effectiveDismissedPresetProviderIds },
           ))
+          shouldResumeTasks = settings.profiles.some((profile) =>
+            Boolean(profile.apiKey.trim()) && !state.settings.profiles.find((item) => item.id === profile.id)?.apiKey.trim(),
+          )
           const shouldClearReusedProfile = state.reusedTaskApiProfileId && settings.activeProfileId === state.reusedTaskApiProfileId
           return {
             settings,
@@ -669,6 +683,7 @@ export const useStore = create<AppState>()(
               : {}),
           }
         })
+        if (shouldResumeTasks) queueMicrotask(resumePendingTasks)
       },
       dismissedCodexCliPrompts: [],
       dismissCodexCliPrompt: (key) => set((st) => ({
@@ -1103,13 +1118,18 @@ function failOpenAITaskIfStillRunning(taskId: string, error: string, now = Date.
   return true
 }
 
-function scheduleOpenAIWatchdog(taskId: string, timeoutSeconds: number, profile?: TimeoutStreamingHintProfile | null) {
+function scheduleOpenAIWatchdog(
+  taskId: string,
+  timeoutSeconds: number,
+  profile?: TimeoutStreamingHintProfile | null,
+  options: { fromNow?: boolean } = {},
+) {
   clearOpenAIWatchdogTimer(taskId)
   const task = useStore.getState().tasks.find((item) => item.id === taskId)
   if (!task || !isRunningOpenAITask(task)) return
 
   const timeoutMs = Math.max(0, timeoutSeconds * 1000)
-  const remainingMs = Math.max(0, timeoutMs - (Date.now() - task.createdAt))
+  const remainingMs = options.fromNow ? timeoutMs : Math.max(0, timeoutMs - (Date.now() - task.createdAt))
   const timer = setTimeout(() => {
     openAIWatchdogTimers.delete(taskId)
     const failed = failOpenAITaskIfStillRunning(taskId, createOpenAITimeoutError(timeoutSeconds, profile))
@@ -1472,7 +1492,7 @@ export async function initStore() {
   if (shouldRewritePersistedLocalState) {
     useStore.setState({})
   }
-  const { tasks: markedTasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasks, Date.now())
+  const { tasks: markedTasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasks, Date.now(), { preserveRunning: true })
   const interruptedTaskIds = new Set(interruptedTasks.map((task) => task.id))
   const favoriteState = useStore.getState()
   const normalizedFavorites = normalizeLoadedFavoriteState(markedTasks.map(getPersistableTask), favoriteState.favoriteCollections, favoriteState.defaultFavoriteCollectionId)
@@ -1504,6 +1524,10 @@ export async function initStore() {
       scheduleCustomRecovery(task.id, 0)
     }
   }
+
+  // 同步 Images API 没有可查询的服务端 task_id；刷新后重新提交仍保留任务记录，
+  // 避免用户看到任务被直接判定为失败。已完成的异步任务走上面的恢复轮询。
+  resumePendingTasks()
 
   // 收集所有任务引用的图片 id
   const referencedIds = new Set<string>()
@@ -1762,6 +1786,41 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
 
   // 异步调用 API
   executeTask(taskId)
+}
+
+/**
+ * 页面重开或从页面缓存返回后，重新接管仍处于运行态的图像任务。
+ */
+export function resumePendingTasks() {
+  const { settings, tasks } = useStore.getState()
+  for (const task of tasks) {
+    if (task.apiProvider === 'fal' && task.falRequestId && task.falEndpoint && (task.status === 'running' || task.falRecoverable)) {
+      scheduleFalRecovery(task.id, 0)
+      continue
+    }
+    if (task.customTaskId && (task.status === 'running' || task.customRecoverable)) {
+      scheduleCustomRecovery(task.id, 0)
+      continue
+    }
+    if (task.status !== 'running') continue
+    const profile = getTaskApiProfile(settings, task) ?? (!task.apiProfileId ? getActiveApiProfile(settings) : null)
+    if (!profile) {
+      updateTaskInStore(task.id, {
+        ...createTaskErrorPatch(task, '找不到此任务所使用的 API 配置。', Date.now()),
+        falRecoverable: false,
+        customRecoverable: false,
+      })
+      continue
+    }
+    if (!profile.apiKey.trim()) continue
+    void executeTask(task.id, { resumed: true })
+  }
+}
+
+export function setPageLifecycleEnding(ending: boolean) {
+  pageLifecycleEnding = ending
+  if (ending) pageLifecycleGeneration += 1
+  if (!ending) resumePendingTasks()
 }
 
 function getActiveAgentConversation(): AgentConversation {
@@ -3508,10 +3567,16 @@ async function executeAgentRound(
   }
 }
 
-async function executeTask(taskId: string) {
+async function executeTask(taskId: string, options: { resumed?: boolean } = {}) {
+  if (activeTaskExecutions.has(taskId)) return
+  activeTaskExecutions.add(taskId)
+
   const { settings } = useStore.getState()
   const task = useStore.getState().tasks.find((t) => t.id === taskId)
-  if (!task) return
+  if (!task) {
+    activeTaskExecutions.delete(taskId)
+    return
+  }
   const taskProfile = getTaskApiProfile(settings, task)
   if (!taskProfile && task.apiProfileId) {
     updateTaskInStore(taskId, {
@@ -3519,11 +3584,14 @@ async function executeTask(taskId: string) {
       falRecoverable: false,
       customRecoverable: false,
     })
+    activeTaskExecutions.delete(taskId)
     return
   }
   const activeProfile = taskProfile ?? getActiveApiProfile(settings)
   const requestSettings = createSettingsForApiProfile(settings, activeProfile)
   const taskProvider = taskProfile?.provider ?? task.apiProvider ?? activeProfile.provider
+  const executionPageLifecycleGeneration = pageLifecycleGeneration
+  let interruptedByPageLifecycle = false
   let falRequestInfo: { requestId: string; endpoint: string } | null = task.falRequestId && task.falEndpoint
         ? { requestId: task.falRequestId, endpoint: task.falEndpoint }
     : null
@@ -3536,7 +3604,7 @@ async function executeTask(taskId: string) {
     !isAsyncCustomProviderTask(requestSettings, taskProvider, task.inputImageIds.length > 0) &&
     !usesConcurrentImageRequests(requestSettings, activeProfile, task.params, task.inputImageIds.length > 0)
   ) {
-    scheduleOpenAIWatchdog(taskId, activeProfile.timeout, activeProfile)
+    scheduleOpenAIWatchdog(taskId, activeProfile.timeout, activeProfile, { fromNow: options.resumed })
   }
 
   try {
@@ -3642,6 +3710,7 @@ async function executeTask(taskId: string) {
       falRecoverable: false,
       customRecoverable: false,
     })
+    if (options.resumed && isAgentTask(task)) void continueRecoveredAgentRound(taskId)
     void deleteUnreferencedImageIds(partialImageIdsToClean)
 
     const failedCount = result.failedRequests?.length ?? 0
@@ -3663,6 +3732,10 @@ async function executeTask(taskId: string) {
     clearOpenAIWatchdogTimer(taskId)
     const latestTask = useStore.getState().tasks.find((t) => t.id === taskId)
     if (!latestTask || latestTask.status !== 'running') return
+    if (executionPageLifecycleGeneration !== pageLifecycleGeneration && isNetworkRecoverableError(err)) {
+      interruptedByPageLifecycle = true
+      return
+    }
     useStore.getState().setTaskStreamPreview(taskId)
     const latestFalRequestInfo = falRequestInfo ?? (latestTask.falRequestId && latestTask.falEndpoint
       ? { requestId: latestTask.falRequestId, endpoint: latestTask.falEndpoint }
@@ -3705,9 +3778,12 @@ async function executeTask(taskId: string) {
         falRecoverable: false,
         customRecoverable: false,
       })
+      if (options.resumed && isAgentTask(task)) void continueRecoveredAgentRound(taskId)
       useStore.getState().setDetailTaskId(taskId)
     }
   } finally {
+    activeTaskExecutions.delete(taskId)
+    if (interruptedByPageLifecycle && !pageLifecycleEnding) queueMicrotask(resumePendingTasks)
     // 释放输入图片的内存缓存（已持久化到 IndexedDB，后续按需从 DB 加载）
     for (const imgId of task.inputImageIds) {
       deleteCachedImage(imgId)
@@ -4573,4 +4649,3 @@ export async function addImageFromUrl(src: string): Promise<void> {
   cacheImage(id, dataUrl)
   useStore.getState().addInputImage({ id, dataUrl })
 }
-

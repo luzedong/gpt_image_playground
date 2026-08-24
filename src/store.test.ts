@@ -136,7 +136,7 @@ import { callImageApi } from './lib/api'
 import { callAgentResponsesApi, callBatchImageSingle } from './lib/agentApi'
 import { getFalQueuedImageResult } from './lib/falAiImageApi'
 import { removeKeyedBackgroundFromDataUrl } from './lib/transparentImage'
-import { clearData, clearFailedTasks, deleteFavoriteCollection, editOutputs, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, regenerateAgentAssistantMessage, removeMultipleTasks, removeTask, restoreExplicitPresetConfig, reuseConfig, stopAgentResponse, submitAgentMessage, submitTask, taskMatchesFilterStatus, taskMatchesSearchQuery, useStore } from './store'
+import { clearData, clearFailedTasks, deleteFavoriteCollection, editOutputs, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, regenerateAgentAssistantMessage, removeMultipleTasks, removeTask, restoreExplicitPresetConfig, reuseConfig, setPageLifecycleEnding, stopAgentResponse, submitAgentMessage, submitTask, taskMatchesFilterStatus, taskMatchesSearchQuery, useStore } from './store'
 
 const commitTaskDeletionImplementation = vi.mocked(commitTaskDeletion).getMockImplementation()!
 const deleteDbImageImplementation = vi.mocked(deleteDbImage).getMockImplementation()!
@@ -1100,6 +1100,142 @@ describe('agent conversation persistence', () => {
     expect(state.maskEditorImageId).toBeNull()
   })
 
+})
+
+describe('synchronous task recovery', () => {
+  beforeEach(async () => {
+    await clearTasks()
+    await clearImages()
+    await clearAgentConversations()
+    vi.mocked(callImageApi).mockReset().mockResolvedValue({
+      images: ['data:image/png;base64,recovered'],
+      actualParams: {},
+      actualParamsList: [{}],
+      revisedPrompts: [],
+    })
+    const profile = createDefaultOpenAIProfile({ apiKey: 'pixel-key' })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...DEFAULT_SETTINGS,
+        profiles: [profile],
+        activeProfileId: profile.id,
+      }),
+      tasks: [],
+      inputImages: [],
+      galleryInputDraft: null,
+      agentConversations: [],
+      showToast: vi.fn(),
+    })
+    setPageLifecycleEnding(false)
+  })
+
+  it('resubmits a persisted synchronous task after restart', async () => {
+    const profile = useStore.getState().settings.profiles[0]
+    const runningTask = task({
+      id: 'sync-restart-task',
+      apiProvider: 'openai',
+      apiProfileId: profile.id,
+      apiProfileName: profile.name,
+      apiModel: profile.model,
+      status: 'running',
+      error: null,
+      createdAt: Date.now() - 1_000,
+      finishedAt: null,
+      elapsed: null,
+    })
+    await putDbTask(runningTask)
+
+    await initStore()
+    await vi.waitFor(() => {
+      expect(useStore.getState().tasks.find((item) => item.id === runningTask.id)?.status).toBe('done')
+    })
+
+    expect(callImageApi).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a pending task running until an API key is provided', async () => {
+    const emptyProfile = createDefaultOpenAIProfile({ apiKey: '' })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...DEFAULT_SETTINGS,
+        profiles: [emptyProfile],
+        activeProfileId: emptyProfile.id,
+      }),
+    })
+    const runningTask = task({
+      id: 'sync-waiting-for-key',
+      apiProvider: 'openai',
+      apiProfileId: emptyProfile.id,
+      apiProfileName: emptyProfile.name,
+      apiModel: emptyProfile.model,
+      status: 'running',
+      error: null,
+      createdAt: Date.now(),
+      finishedAt: null,
+      elapsed: null,
+    })
+    await putDbTask(runningTask)
+
+    await initStore()
+    expect(callImageApi).not.toHaveBeenCalled()
+    expect(useStore.getState().tasks[0]?.status).toBe('running')
+
+    useStore.getState().setSettings({ apiKey: 'pixel-key' })
+    await vi.waitFor(() => {
+      expect(useStore.getState().tasks.find((item) => item.id === runningTask.id)?.status).toBe('done')
+    })
+
+    expect(callImageApi).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not turn a page-unload network abort into a failed task', async () => {
+    const request = deferred<Awaited<ReturnType<typeof callImageApi>>>()
+    vi.mocked(callImageApi)
+      .mockImplementationOnce(() => request.promise)
+      .mockResolvedValueOnce({
+        images: ['data:image/png;base64,resumed-after-page-show'],
+        actualParams: {},
+        actualParamsList: [{}],
+        revisedPrompts: [],
+      })
+    useStore.setState({ prompt: '页面关闭恢复测试', params: { ...DEFAULT_PARAMS } })
+
+    await submitTask()
+    await vi.waitFor(() => expect(callImageApi).toHaveBeenCalledTimes(1))
+    setPageLifecycleEnding(true)
+    request.reject(new TypeError('Failed to fetch'))
+    await request.promise.catch(() => undefined)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(useStore.getState().tasks[0]?.status).toBe('running')
+
+    setPageLifecycleEnding(false)
+    await vi.waitFor(() => expect(useStore.getState().tasks[0]?.status).toBe('done'))
+    expect(callImageApi).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries after page show even when the old request rejects late', async () => {
+    const request = deferred<Awaited<ReturnType<typeof callImageApi>>>()
+    vi.mocked(callImageApi)
+      .mockImplementationOnce(() => request.promise)
+      .mockResolvedValueOnce({
+        images: ['data:image/png;base64,resumed-after-late-abort'],
+        actualParams: {},
+        actualParamsList: [{}],
+        revisedPrompts: [],
+      })
+    useStore.setState({ prompt: '页面缓存恢复测试', params: { ...DEFAULT_PARAMS } })
+
+    await submitTask()
+    await vi.waitFor(() => expect(callImageApi).toHaveBeenCalledTimes(1))
+    setPageLifecycleEnding(true)
+    setPageLifecycleEnding(false)
+    request.reject(new TypeError('Failed to fetch'))
+    await request.promise.catch(() => undefined)
+
+    await vi.waitFor(() => expect(useStore.getState().tasks[0]?.status).toBe('done'))
+    expect(callImageApi).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('fal task recovery', () => {
@@ -5299,7 +5435,7 @@ describe('reused task API profile', () => {
     expect(state.tasks).toEqual([])
     expect(state.setConfirmDialog).toHaveBeenCalledWith(expect.objectContaining({
       title: '找不到 API 配置',
-      message: '找不到复用任务所使用的 API 配置「未知配置」，要使用当前的 API 配置「默认」提交任务吗？',
+      message: '找不到复用任务所使用的 API 配置「未知配置」，要使用当前的 API 配置「Pixel API」提交任务吗？',
       confirmText: '使用当前配置提交',
       cancelText: '放弃提交',
     }))

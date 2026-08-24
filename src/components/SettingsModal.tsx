@@ -26,6 +26,7 @@ import {
   normalizeSettings,
   normalizeStreamPartialImages,
   switchApiProfileProvider,
+  validateApiProfile,
 } from '../lib/apiProfiles'
 import {
   getDefaultPresetBaseUrl,
@@ -294,13 +295,19 @@ export default function SettingsModal() {
       if (profile.baseUrl.trim() || profile.provider === 'fal') return true
       return apiProxyAvailable && isProfileApiProxyEligible(draft, profile) && (apiProxyLocked || profile.apiProxy)
     })
-  const agentTextProfiles = agentProfiles.filter(isAgentTextApiProfile)
+  const agentTextProfiles = (presetConfigOnly ? visibleProfiles : draft.profiles).filter(isAgentTextApiProfile)
   const selectedAgentTextProfile = agentTextProfiles.find((profile) => profile.id === draft.agentTextProfileId)
     ?? null
+  const effectiveAgentTextProfile = draft.agentApiConfigMode === 'off'
+    ? (isAgentTextApiProfile(activeProfile) ? activeProfile : null)
+    : selectedAgentTextProfile
+  const agentTextProfileUsesActive = draft.agentApiConfigMode === 'off' && effectiveAgentTextProfile?.id === activeProfile.id
+  const agentTextProfileLocked = effectiveAgentTextProfile ? isPresetProfileLocked(effectiveAgentTextProfile.id) : false
+  const agentTextProfileError = effectiveAgentTextProfile ? validateApiProfile(effectiveAgentTextProfile) : null
   const selectedAgentImageProfile = agentProfiles.find((profile) => profile.id === draft.agentImageProfileId)
     ?? null
   const agentTextProfileOptions = agentTextProfiles.map((profile) => ({
-    label: `${profile.name} · ${profile.model || DEFAULT_RESPONSES_MODEL}`,
+    label: `${profile.name} · ${profile.model || DEFAULT_RESPONSES_MODEL}${validateApiProfile(profile) ? ' · 配置不完整' : ''}`,
     value: profile.id,
   }))
   const agentImageProfileOptions = agentProfiles.map((profile) => ({
@@ -722,6 +729,58 @@ export default function SettingsModal() {
           ?? draft.agentImageProfileId
         : draft.agentImageProfileId,
     })
+  }
+
+  const updateAgentTextProfileModel = (model: string) => {
+    if (!effectiveAgentTextProfile || agentTextProfileLocked) return
+    setDraft((previous) => ({
+      ...previous,
+      profiles: previous.profiles.map((profile) => profile.id === effectiveAgentTextProfile.id
+        ? { ...profile, model }
+        : profile),
+    }))
+  }
+
+  const commitAgentTextProfileModel = (model: string) => {
+    if (!effectiveAgentTextProfile || agentTextProfileLocked) return
+    commitSettings({
+      ...draft,
+      profiles: draft.profiles.map((profile) => profile.id === effectiveAgentTextProfile.id
+        ? { ...profile, model }
+        : profile),
+    })
+  }
+
+  const createAgentTextProfile = presetConfigOnly ? null : () => {
+    setReusedTaskApiProfile(null)
+    const activeProfileIsPixel = /(?:^|\/\/)(?:api\.)?ai-pixel\.online(?=[:/]|$)/i.test(activeProfile.baseUrl.trim())
+    const source = activeProfile.provider === 'openai' && !activeProfileIsPixel ? activeProfile : null
+    const profile = createDefaultOpenAIProfile({
+      id: newId('openai-agent'),
+      name: source ? `${source.name || '默认'} · Agent` : 'Agent 文本模型',
+      baseUrl: source?.baseUrl ?? 'https://api.openai.com/v1',
+      apiKey: source?.apiKey ?? '',
+      timeout: source?.timeout ?? DEFAULT_SETTINGS.timeout,
+      apiMode: 'responses',
+      model: DEFAULT_RESPONSES_MODEL,
+      reasoningEffort: source?.reasoningEffort,
+      codexCli: source?.codexCli ?? false,
+      apiProxy: source?.apiProxy ?? DEFAULT_SETTINGS.apiProxy,
+      streamPartialImages: source?.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES,
+      transparentBackgroundMethod: source?.transparentBackgroundMethod ?? 'api',
+    })
+    const nextDraft = normalizeSettings({
+      ...draft,
+      profiles: [...draft.profiles, profile],
+      activeProfileId: profile.id,
+      agentApiConfigMode: draft.agentApiConfigMode === 'off' ? 'native' : draft.agentApiConfigMode,
+      agentTextProfileId: profile.id,
+    })
+    commitSettings(nextDraft)
+    setActiveTab('api')
+    showToast(activeProfileIsPixel
+      ? '已新建独立的 Responses 配置；Pixel Key 不能直接当语言模型 Key，请填写你的文本模型服务地址和 Key'
+      : '已新建 Responses 文本模型配置，请检查 API 地址、Key 和模型 ID', 'info')
   }
 
   const duplicateActiveProfile = () => {
@@ -1212,10 +1271,18 @@ export default function SettingsModal() {
                 agentMaxToolRoundsInput={agentMaxToolRoundsInput}
                 agentTextProfileOptions={agentTextProfileOptions}
                 agentImageProfileOptions={agentImageProfileOptions}
+                effectiveAgentTextProfile={effectiveAgentTextProfile}
                 selectedAgentTextProfile={selectedAgentTextProfile}
                 selectedAgentImageProfile={selectedAgentImageProfile}
+                agentTextProfileUsesActive={agentTextProfileUsesActive}
+                agentTextProfileLocked={agentTextProfileLocked}
+                agentTextProfileError={agentTextProfileError}
                 setAgentMaxToolRoundsInput={setAgentMaxToolRoundsInput}
                 updateAgentApiConfigMode={updateAgentApiConfigMode}
+                updateAgentTextProfileModel={updateAgentTextProfileModel}
+                commitAgentTextProfileModel={commitAgentTextProfileModel}
+                openApiSettings={() => setActiveTab('api')}
+                createAgentTextProfile={createAgentTextProfile}
                 commitSettings={commitSettings}
                 commitAgentMaxToolRounds={commitAgentMaxToolRounds}
               />

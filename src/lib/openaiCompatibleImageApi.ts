@@ -36,10 +36,17 @@ function appendQuery(path: string, query?: Record<string, string>): string {
   return `${path}${path.includes('?') ? '&' : '?'}${params.toString()}`
 }
 
-function createOpenAICompatiblePaths() {
+function isPixelApiBaseUrl(baseUrl: string) {
+  return /(?:^|\/\/)(?:api\.)?ai-pixel\.online(?=[:/]|$)/i.test(baseUrl.trim())
+}
+
+function createOpenAICompatiblePaths(baseUrl: string) {
+  const base = baseUrl.trim()
+  // buildApiUrl 会为普通 Base URL 自动补 /v1；仅保留尾斜杠时需要在 path 中补齐。
+  const prefix = isPixelApiBaseUrl(base) && base.endsWith('/') && !/\/v1\/+$/i.test(base) ? 'v1/' : ''
   return {
-    generationPath: 'images/generations',
-    editPath: 'images/edits',
+    generationPath: `${prefix}images/generations`,
+    editPath: `${prefix}images/edits`,
   }
 }
 
@@ -484,12 +491,14 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
   const prompt = profile.codexCli && !opts.settings.allowPromptRewrite
     ? `${PROMPT_REWRITE_GUARD_PREFIX}\n${sizePrompt}`
     : sizePrompt
-  const isEdit = inputImageDataUrls.length > 0
-  const mime = MIME_MAP[params.output_format] || 'image/png'
+  const isPixelApi = isPixelApiBaseUrl(profile.baseUrl)
+  const requestImageDataUrls = isPixelApi ? inputImageDataUrls.slice(0, 1) : inputImageDataUrls
+  const isEdit = requestImageDataUrls.length > 0
+  const mime = isPixelApi ? 'image/png' : MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
-  const paths = createOpenAICompatiblePaths()
+  const paths = createOpenAICompatiblePaths(profile.baseUrl)
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
@@ -501,36 +510,38 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
       const formData = new FormData()
       formData.append('model', profile.model)
       formData.append('prompt', prompt)
-      if (!profile.codexCli) {
+      if (!profile.codexCli && (!isPixelApi || params.size !== 'auto')) {
         formData.append('size', params.size)
       }
-      formData.append('output_format', params.output_format)
-      formData.append('moderation', params.moderation)
-      if (opts.nativeTransparentBackground) {
-        formData.append('background', 'transparent')
-      }
+      if (!isPixelApi) {
+        formData.append('output_format', params.output_format)
+        formData.append('moderation', params.moderation)
+        if (opts.nativeTransparentBackground) {
+          formData.append('background', 'transparent')
+        }
 
-      if (!profile.codexCli) {
-        formData.append('quality', params.quality)
-      }
+        if (!profile.codexCli) {
+          formData.append('quality', params.quality)
+        }
 
-      if (params.output_format !== 'png' && params.output_compression != null) {
-        formData.append('output_compression', String(params.output_compression))
+        if (params.output_format !== 'png' && params.output_compression != null) {
+          formData.append('output_compression', String(params.output_compression))
+        }
       }
       if (params.n > 1) {
         formData.append('n', String(params.n))
       }
-      if (profile.responseFormatB64Json) {
+      if (profile.responseFormatB64Json && !isPixelApi) {
         formData.append('response_format', 'b64_json')
       }
-      if (profile.streamImages) {
+      if (profile.streamImages && !isPixelApi) {
         formData.append('stream', 'true')
         formData.append('partial_images', String(getStreamPartialImages(profile)))
       }
 
       const imageBlobs: Blob[] = []
-      for (let i = 0; i < inputImageDataUrls.length; i++) {
-        const dataUrl = inputImageDataUrls[i]
+      for (let i = 0; i < requestImageDataUrls.length; i++) {
+        const dataUrl = requestImageDataUrls[i]
         const blob = opts.maskDataUrl && i === 0
           ? await imageDataUrlToPngBlob(dataUrl)
           : await dataUrlToBlob(dataUrl)
@@ -549,7 +560,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
       for (let i = 0; i < imageBlobs.length; i++) {
         const blob = imageBlobs[i]
         const ext = blob.type.split('/')[1] || 'png'
-        formData.append('image[]', blob, `input-${i + 1}.${ext}`)
+        formData.append(isPixelApi ? 'image' : 'image[]', blob, `input-${i + 1}.${ext}`)
       }
 
       if (maskBlob) {
@@ -567,23 +578,25 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
       const body: Record<string, unknown> = {
         model: profile.model,
         prompt,
-        output_format: params.output_format,
-        moderation: params.moderation,
       }
 
-      if (opts.nativeTransparentBackground) {
-        body.background = 'transparent'
+      if (!isPixelApi) {
+        body.output_format = params.output_format
+        body.moderation = params.moderation
+        if (opts.nativeTransparentBackground) {
+          body.background = 'transparent'
+        }
       }
 
-      if (!profile.codexCli) {
+      if (!profile.codexCli && (!isPixelApi || params.size !== 'auto')) {
         body.size = params.size
       }
 
-      if (!profile.codexCli) {
+      if (!profile.codexCli && !isPixelApi) {
         body.quality = params.quality
       }
 
-      if (params.output_format !== 'png' && params.output_compression != null) {
+      if (!isPixelApi && params.output_format !== 'png' && params.output_compression != null) {
         body.output_compression = params.output_compression
       }
       if (params.n > 1) {
@@ -592,7 +605,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
       if (profile.responseFormatB64Json) {
         body.response_format = 'b64_json'
       }
-      if (profile.streamImages) {
+      if (profile.streamImages && !isPixelApi) {
         body.stream = true
         body.partial_images = getStreamPartialImages(profile)
       }
@@ -614,7 +627,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
       throw new Error(maybeAppendStreamingHint(errorMessage, response.status, profile.streamImages))
     }
 
-    if (profile.streamImages && isEventStreamResponse(response)) {
+    if (profile.streamImages && !isPixelApi && isEventStreamResponse(response)) {
       return parseImagesApiStreamResponse(response, mime, opts.onPartialImage, controller.signal)
     }
 

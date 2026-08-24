@@ -28,7 +28,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_DEFAULT_API_URL: ${{ secrets.VITE_DEFAULT_API_URL }}
+          VITE_DEFAULT_API_KEY: ${{ secrets.VITE_DEFAULT_API_KEY }}
           VITE_LOCK_PRESET_CONFIG_PARAMS: 'false'
           VITE_PREVENT_PRESET_CONFIG_DELETION: 'false'
 

@@ -1,9 +1,10 @@
 #!/bin/sh
 
-# 用环境变量替换前端默认 API URL。显式传入空字符串时保留为空。
+# 用环境变量替换前端默认 API URL 和 Key。URL 默认固定为 Pixel API，仍保留高级覆盖能力。
 if [ "${DEFAULT_API_URL+x}" != "x" ]; then
-    DEFAULT_API_URL=${API_URL:-https://api.openai.com/v1}
+    DEFAULT_API_URL=${API_URL:-https://api.ai-pixel.online/v1}
 fi
+DEFAULT_API_KEY=${DEFAULT_API_KEY:-}
 DOCKER_LEGACY_API_URL_USED=${DOCKER_LEGACY_API_URL_USED:-false}
 if [ -n "$API_URL" ]; then
     DOCKER_LEGACY_API_URL_USED=true
@@ -80,9 +81,11 @@ case "$DEFAULT_API_URL_TRIMMED" in
         ;;
 esac
 DEFAULT_API_URL_ESCAPED=$(escape_sed_replacement "$(escape_js_string "$DEFAULT_API_URL")")
+DEFAULT_API_KEY_ESCAPED=$(escape_sed_replacement "$(escape_js_string "$DEFAULT_API_KEY")")
 
 # 查找所有 js 文件并将占位符替换为运行时配置
 find /usr/share/nginx/html/assets -type f -name "*.js" -exec sed -i "s|__VITE_DEFAULT_API_URL_PLACEHOLDER__|$DEFAULT_API_URL_ESCAPED|g" {} +
+find /usr/share/nginx/html/assets -type f -name "*.js" -exec sed -i "s|__VITE_DEFAULT_API_KEY_PLACEHOLDER__|$DEFAULT_API_KEY_ESCAPED|g" {} +
 find /usr/share/nginx/html/assets -type f -name "*.js" -exec sed -i "s|__VITE_API_PROXY_AVAILABLE_PLACEHOLDER__|$API_PROXY_AVAILABLE|g" {} +
 find /usr/share/nginx/html/assets -type f -name "*.js" -exec sed -i "s|__VITE_API_PROXY_LOCKED_PLACEHOLDER__|$API_PROXY_LOCKED|g" {} +
 find /usr/share/nginx/html/assets -type f -name "*.js" -exec sed -i "s|__VITE_DOCKER_DEPLOYMENT_PLACEHOLDER__|true|g" {} +

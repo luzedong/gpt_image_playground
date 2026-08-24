@@ -4,6 +4,7 @@ import {
   DEFAULT_FAL_MODEL,
   DEFAULT_IMAGES_MODEL,
   DEFAULT_OPENAI_PROFILE_ID,
+  DEFAULT_PIXEL_BASE_URL,
   DEFAULT_SETTINGS,
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
@@ -74,6 +75,57 @@ describe('normalizeSettings', () => {
 })
 
 describe('default API URL env', () => {
+  it('uses the built-in Pixel profile and only requires a deployment key', async () => {
+    vi.resetModules()
+    vi.stubEnv('VITE_DEFAULT_API_URL', '')
+    vi.stubEnv('VITE_DEFAULT_API_KEY', 'pixel-key')
+
+    const { DEFAULT_SETTINGS, createDefaultOpenAIProfile, hasDefaultPresetConfig } = await import('./apiProfiles')
+
+    expect(createDefaultOpenAIProfile()).toMatchObject({
+      id: DEFAULT_OPENAI_PROFILE_ID,
+      name: 'Pixel API',
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      apiKey: 'pixel-key',
+      model: DEFAULT_IMAGES_MODEL,
+      timeout: 600,
+      apiMode: 'images',
+      codexCli: false,
+      streamImages: false,
+      streamPartialImages: 1,
+      transparentBackgroundMethod: 'api',
+    })
+    expect(DEFAULT_SETTINGS.profiles[0]).toMatchObject({
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      apiKey: 'pixel-key',
+      model: DEFAULT_IMAGES_MODEL,
+      apiMode: 'images',
+    })
+    expect(hasDefaultPresetConfig()).toBe(true)
+  })
+
+  it('does not create a deployment preset from the built-in Pixel URL alone', async () => {
+    vi.resetModules()
+    vi.stubEnv('VITE_DEFAULT_API_URL', '')
+    vi.stubEnv('VITE_DEFAULT_API_KEY', '')
+
+    const { hasDefaultPresetConfig } = await import('./apiProfiles')
+
+    expect(hasDefaultPresetConfig()).toBe(false)
+  })
+
+  it('prefers a URL query key and preserves an explicitly cleared legacy key', async () => {
+    vi.resetModules()
+    vi.stubEnv('VITE_DEFAULT_API_URL', `${DEFAULT_PIXEL_BASE_URL}?apiKey=url-key`)
+    vi.stubEnv('VITE_DEFAULT_API_KEY', 'environment-key')
+
+    const { createDefaultOpenAIProfile, normalizeSettings } = await import('./apiProfiles')
+
+    expect(createDefaultOpenAIProfile().apiKey).toBe('url-key')
+    expect(normalizeSettings({}).apiKey).toBe('url-key')
+    expect(normalizeSettings({ apiKey: '' }).apiKey).toBe('')
+  })
+
   it('applies shared URL params from VITE_DEFAULT_API_URL to the default profile', async () => {
     vi.resetModules()
     vi.stubEnv('VITE_DEFAULT_API_URL', 'https://app.example.com/?apiUrl=https%3A%2F%2Fapi.example.com&apiMode=responses&model=test-image-model&profileName=URL%20Profile&reasoningEffort=xhigh&codexCli=true&streamImages=true&streamPartialImages=3&transparentBackgroundMethod=local')

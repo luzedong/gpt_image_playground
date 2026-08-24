@@ -4,6 +4,8 @@ import { DEFAULT_SETTINGS } from './apiProfiles'
 import { callImageApi } from './api'
 import { maybeAppendStreamingHint } from './imageApiShared'
 
+const GENERIC_OPENAI_IMAGES_BASE_URL = 'https://api.openai.com/v1'
+
 describe('API error hints', () => {
   it.each([false, true])('uses the transparent background hint when streaming is %s', (streamImages) => {
     const message = 'Transparent background is not supported for this model.'
@@ -106,7 +108,7 @@ describe('callImageApi', () => {
     }))
 
     await callImageApi({
-      settings: { ...DEFAULT_SETTINGS, apiKey: 'test-key' },
+      settings: { ...DEFAULT_SETTINGS, baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL, apiKey: 'test-key' },
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS, output_format: 'webp', transparent_output: true },
       nativeTransparentBackground: true,
@@ -128,7 +130,7 @@ describe('callImageApi', () => {
     }))
 
     await callImageApi({
-      settings: { ...DEFAULT_SETTINGS, apiKey: 'test-key' },
+      settings: { ...DEFAULT_SETTINGS, baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL, apiKey: 'test-key' },
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS, transparent_output: true },
       nativeTransparentBackground: true,
@@ -138,6 +140,191 @@ describe('callImageApi', () => {
     const [, init] = fetchMock.mock.calls.find(([, request]) => (request as RequestInit | undefined)?.body instanceof FormData)!
     const body = (init as RequestInit).body as FormData
     expect(body.get('background')).toBe('transparent')
+  })
+
+  it('uses the documented Pixel generations endpoint and minimal request fields', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{ b64_json: 'aW1hZ2U=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    const pixelProfile = {
+      ...DEFAULT_SETTINGS.profiles[0],
+      baseUrl: 'https://ai-pixel.online',
+      apiKey: 'test-key',
+      model: 'gpt-image-1',
+      responseFormatB64Json: true,
+    }
+
+    await callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        baseUrl: pixelProfile.baseUrl,
+        apiKey: pixelProfile.apiKey,
+        model: pixelProfile.model,
+        profiles: [pixelProfile],
+        activeProfileId: pixelProfile.id,
+      },
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS, size: '1024x1024', n: 2, quality: 'high', output_format: 'webp', moderation: 'low' },
+      nativeTransparentBackground: true,
+      inputImageDataUrls: [],
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://ai-pixel.online/v1/images/generations')
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      model: 'gpt-image-1',
+      prompt: 'prompt',
+      size: '1024x1024',
+      n: 2,
+      response_format: 'b64_json',
+    })
+  })
+
+  it('omits the internal auto size value for Pixel generations', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{ b64_json: 'aW1hZ2U=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    const pixelProfile = {
+      ...DEFAULT_SETTINGS.profiles[0],
+      baseUrl: 'https://ai-pixel.online',
+      apiKey: 'test-key',
+      model: 'gpt-image-1',
+    }
+
+    await callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        baseUrl: pixelProfile.baseUrl,
+        apiKey: pixelProfile.apiKey,
+        model: pixelProfile.model,
+        profiles: [pixelProfile],
+        activeProfileId: pixelProfile.id,
+      },
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS, size: 'auto' },
+      inputImageDataUrls: [],
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String((init as RequestInit).body))
+    expect(body.size).toBeUndefined()
+  })
+
+  it('uses singular image fields for the documented Pixel edits endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      data: [{ b64_json: 'aW1hZ2U=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    const pixelProfile = {
+      ...DEFAULT_SETTINGS.profiles[0],
+      baseUrl: 'https://api.ai-pixel.online/v1',
+      apiKey: 'test-key',
+      model: 'gpt-image-1',
+    }
+
+    await callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        baseUrl: pixelProfile.baseUrl,
+        apiKey: pixelProfile.apiKey,
+        model: pixelProfile.model,
+        profiles: [pixelProfile],
+        activeProfileId: pixelProfile.id,
+      },
+      prompt: 'edit prompt',
+      params: { ...DEFAULT_PARAMS, size: '1024x1024', quality: 'high', output_format: 'webp', moderation: 'low' },
+      inputImageDataUrls: [
+        'data:image/png;base64,aW1hZ2UtMQ==',
+        'data:image/png;base64,aW1hZ2UtMg==',
+      ],
+    })
+
+    const [url, init] = fetchMock.mock.calls.find(([, request]) => (request as RequestInit | undefined)?.body instanceof FormData)!
+    const body = (init as RequestInit).body as FormData
+    expect(url).toBe('https://api.ai-pixel.online/v1/images/edits')
+    expect(body.getAll('image')).toHaveLength(1)
+    expect(body.getAll('image[]')).toHaveLength(0)
+    expect(body.get('model')).toBe('gpt-image-1')
+    expect(body.get('prompt')).toBe('edit prompt')
+    expect(body.get('size')).toBe('1024x1024')
+    expect(body.get('quality')).toBeNull()
+    expect(body.get('output_format')).toBeNull()
+    expect(body.get('moderation')).toBeNull()
+  })
+
+  it('omits the internal auto size value for Pixel edits', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      data: [{ b64_json: 'aW1hZ2U=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    const pixelProfile = {
+      ...DEFAULT_SETTINGS.profiles[0],
+      baseUrl: 'https://api.ai-pixel.online/v1',
+      apiKey: 'test-key',
+      model: 'gpt-image-1',
+    }
+
+    await callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        baseUrl: pixelProfile.baseUrl,
+        apiKey: pixelProfile.apiKey,
+        model: pixelProfile.model,
+        profiles: [pixelProfile],
+        activeProfileId: pixelProfile.id,
+      },
+      prompt: 'edit prompt',
+      params: { ...DEFAULT_PARAMS, size: 'auto' },
+      inputImageDataUrls: ['data:image/png;base64,aW1hZ2U='],
+    })
+
+    const [, init] = fetchMock.mock.calls.find(([, request]) => (request as RequestInit | undefined)?.body instanceof FormData)!
+    const body = (init as RequestInit).body as FormData
+    expect(body.get('size')).toBeNull()
+  })
+
+  it('omits generation-only response_format from Pixel edits', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      data: [{ b64_json: 'aW1hZ2U=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    const pixelProfile = {
+      ...DEFAULT_SETTINGS.profiles[0],
+      baseUrl: 'https://api.ai-pixel.online/v1',
+      apiKey: 'test-key',
+      model: 'gpt-image-1',
+      responseFormatB64Json: true,
+    }
+
+    await callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        baseUrl: pixelProfile.baseUrl,
+        apiKey: pixelProfile.apiKey,
+        model: pixelProfile.model,
+        profiles: [pixelProfile],
+        activeProfileId: pixelProfile.id,
+      },
+      prompt: 'edit prompt',
+      params: { ...DEFAULT_PARAMS, size: '1024x1024' },
+      inputImageDataUrls: ['data:image/png;base64,aW1hZ2U='],
+    })
+
+    const [, init] = fetchMock.mock.calls.find(([, request]) => (request as RequestInit | undefined)?.body instanceof FormData)!
+    const body = (init as RequestInit).body as FormData
+    expect(body.get('response_format')).toBeNull()
   })
 
   it('requests a transparent background from the Responses API image tool', async () => {
@@ -305,6 +492,7 @@ describe('callImageApi', () => {
     const result = await callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         streamPartialImages: 3,
@@ -367,6 +555,7 @@ describe('callImageApi', () => {
     const result = await callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
@@ -395,6 +584,7 @@ describe('callImageApi', () => {
     await expect(callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
@@ -418,6 +608,7 @@ describe('callImageApi', () => {
     await expect(callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
@@ -441,6 +632,7 @@ describe('callImageApi', () => {
     await expect(callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
@@ -470,6 +662,7 @@ describe('callImageApi', () => {
     const result = await callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
@@ -511,6 +704,7 @@ describe('callImageApi', () => {
     const result = await callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
@@ -560,6 +754,7 @@ describe('callImageApi', () => {
     const result = await callImageApi({
       settings: {
         ...DEFAULT_SETTINGS,
+        baseUrl: GENERIC_OPENAI_IMAGES_BASE_URL,
         apiKey: 'test-key',
         streamImages: true,
         streamPartialImages: 1,

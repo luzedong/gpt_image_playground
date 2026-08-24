@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
+import { addImageFromFile, addImageFromUrl, deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
 import { DEFAULT_PARAMS, type TaskRecord } from '../types'
 import { getActiveAgentRounds } from '../lib/agentConversationState'
 import { getActiveApiProfile, getAgentImageApiProfile, normalizeSettings } from '../lib/apiProfiles'
@@ -14,8 +14,11 @@ import { collectAgentRoundOutputImageSlots } from '../lib/agentImageReferences'
 import { ALL_FAVORITES_COLLECTION_ID, getTaskFavoriteCollectionIds } from '../lib/favoriteState'
 import { getContentEditableCursor, getContentEditablePlainText, getContentEditableSelection, getMentionTagHtml, setContentEditableCursor, setContentEditableSelection, syncMentionTagSelection } from '../lib/contentEditableMentions'
 import { useHintTooltip } from '../hooks/useHintTooltip'
+import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { downloadImageEntriesAsZip, downloadImageIds, formatExportFileTime, getTaskOutputImageZipEntries } from '../lib/downloadImages'
+import { getAwesomePromptImageUrl, type AwesomePromptCase } from '../lib/awesomePromptLibrary'
 import SizePickerModal from './SizePickerModal'
+import PromptLibraryPanel from './PromptLibraryPanel'
 import { CloseIcon, CollapseIcon, ExpandIcon } from './icons'
 import ButtonTooltip from './input/buttonTooltip'
 import DragUploadOverlay from './input/dragUploadOverlay'
@@ -327,6 +330,8 @@ export default function InputBar() {
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
+  const [showPromptLibrary, setShowPromptLibrary] = useState(false)
+  const [importingPromptId, setImportingPromptId] = useState<number | null>(null)
   const [showMobileUploadMenu, setShowMobileUploadMenu] = useState(false)
   const [maskPreviewUrl, setMaskPreviewUrl] = useState('')
   const [imageDragIndex, setImageDragIndex] = useState<number | null>(null)
@@ -335,6 +340,7 @@ export default function InputBar() {
   const [atImageMenuDismissed, setAtImageMenuDismissed] = useState(false)
   const [touchDragPreview, setTouchDragPreview] = useState<{ src: string; x: number; y: number } | null>(null)
   const handleRef = useRef<HTMLDivElement>(null)
+  const promptLibraryScrollRef = useRef<HTMLDivElement>(null)
   const dragTouchRef = useRef({ startY: 0, moved: false })
   const suppressHandleClickUntilRef = useRef(0)
   const imageDragIndexRef = useRef<number | null>(null)
@@ -408,6 +414,16 @@ export default function InputBar() {
   const [nInputFocused, setNInputFocused] = useState(false)
   const dragCounter = useRef(0)
   const isMobile = useIsMobile()
+
+  useEffect(() => {
+    if (!showPromptLibrary) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowPromptLibrary(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [showPromptLibrary])
+  usePreventBackgroundScroll(showPromptLibrary, promptLibraryScrollRef)
 
   const settingsActiveProfile = useMemo(() => getActiveApiProfile(settings), [settings])
   const currentActiveProfile = useMemo(() => (
@@ -830,6 +846,37 @@ export default function InputBar() {
 
   const handleFilesRef = useRef(handleFiles)
   handleFilesRef.current = handleFiles
+
+  const handleUsePromptCase = (item: AwesomePromptCase) => {
+    setPrompt(item.prompt)
+    setShowPromptLibrary(false)
+    window.setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  const handleCopyPromptCase = async (item: AwesomePromptCase) => {
+    try {
+      await navigator.clipboard.writeText(item.prompt)
+      showToast('Prompt 已复制', 'success')
+    } catch {
+      showToast('复制失败，请手动复制', 'error')
+    }
+  }
+
+  const handleImportPromptCase = async (item: AwesomePromptCase) => {
+    if (inputImages.length >= API_MAX_IMAGES) {
+      showToast(`参考图数量已达上限（${API_MAX_IMAGES} 张）`, 'error')
+      return
+    }
+    setImportingPromptId(item.id)
+    try {
+      await addImageFromUrl(getAwesomePromptImageUrl(item))
+      showToast('案例图已加入参考图', 'success')
+    } catch (err) {
+      showToast(`导入案例图失败：${err instanceof Error ? err.message : String(err)}`, 'error')
+    } finally {
+      setImportingPromptId(null)
+    }
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     await handleFilesRef.current(e.target.files || [])
@@ -1569,6 +1616,41 @@ export default function InputBar() {
         />
       )}
 
+      {showPromptLibrary && createPortal(
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/25 p-3 backdrop-blur-sm sm:p-6 dark:bg-black/45"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="prompt-library-title"
+          onClick={() => setShowPromptLibrary(false)}
+        >
+          <div
+            className="flex h-[min(88dvh,760px)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-gray-200/80 bg-white/95 text-gray-800 shadow-2xl ring-1 ring-black/5 dark:border-white/[0.08] dark:bg-gray-900/95 dark:text-gray-100 dark:ring-white/10"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200/80 px-4 py-3 sm:px-5 dark:border-white/[0.08]">
+              <div className="min-w-0">
+                <h2 id="prompt-library-title" className="text-sm font-semibold sm:text-base">Prompt 灵感素材</h2>
+                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">将案例 Prompt 填入输入框，或导入案例图作为参考图</p>
+              </div>
+              <button type="button" onClick={() => setShowPromptLibrary(false)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.06] dark:hover:text-white" aria-label="关闭灵感素材库">
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div ref={promptLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+              <PromptLibraryPanel
+                canImportImage={inputImages.length < API_MAX_IMAGES}
+                importingId={importingPromptId}
+                onCopyPrompt={(item) => void handleCopyPromptCase(item)}
+                onImportImage={(item) => void handleImportPromptCase(item)}
+                onUsePrompt={handleUsePromptCase}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       <div
         data-input-bar
         className={`fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-4xl px-3 sm:px-4 transition-all duration-300${promptExpanded ? ' flex flex-col' : ''}`}
@@ -1763,6 +1845,17 @@ export default function InputBar() {
               {renderParams('grid-cols-6')}
 
               <div className="flex gap-2 flex-shrink-0 mb-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowPromptLibrary(true)}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500 shadow-sm transition hover:bg-violet-500/20 dark:text-violet-300"
+                  aria-label="打开 Prompt 灵感素材库"
+                  title="Prompt 灵感素材"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m12 3 1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3L7.5 7.5l3.3-1.2L12 3Zm7 9 .7 1.8 1.8.7-1.8.7L19 17l-.7-1.8-1.8-.7 1.8-.7L19 12ZM5 14l.9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14Z" />
+                  </svg>
+                </button>
                 <div
                   className="relative"
                   onMouseEnter={() => setAttachHover(true)}
@@ -1885,6 +1978,19 @@ export default function InputBar() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                           </svg>
                           上传图片
+                        </button>
+                        <button
+                          className="w-full px-4 py-3 text-left text-sm text-violet-600 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 flex items-center gap-2 transition-colors"
+                          onClick={() => {
+                            setShowMobileUploadMenu(false)
+                            setShowPromptLibrary(true)
+                          }}
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m12 3 1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3L7.5 7.5l3.3-1.2L12 3Z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m19 13 .7 1.8 1.8.7-1.8.7L19 18l-.7-1.8-1.8-.7 1.8-.7L19 13Z" />
+                          </svg>
+                          灵感素材
                         </button>
                       </div>
                     </>

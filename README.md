@@ -141,6 +141,7 @@
 ## ✨ 核心特性
 
 ### 🎨 强大的图像生成与编辑
+- **Prompt 灵感素材库**：画廊输入栏中的「灵感」面板按需读取 [awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) 的公开案例，可搜索和分类筛选，一键填入或复制完整 Prompt，并可选择单张案例图导入为参考图。远程图片使用懒加载，不会打入应用首屏包；案例内容来自公开社区，商业使用前请核对原始来源与[上游免责声明](https://github.com/freestylefly/awesome-gpt-image-2/blob/main/docs/disclaimer.md)。
 - **参考图与遮罩**：支持上传最多 16 张参考图（支持剪贴板和拖拽）。内置可视化遮罩编辑器，自动预处理以符合官方分辨率限制。
 - **批量与迭代**：支持单次多图生成；一键将满意结果转为参考图，无缝开启下一轮修改。
 - **流式生成预览**：`Images API` 与 `Responses API` 模式均支持流式接收中间步骤图像，缓解连接超时问题。
@@ -182,16 +183,29 @@
 
 支持多种部署与开发方式。
 
+### Pixel API 配置
+
+当前应用已内置 Pixel API 地址 `https://api.ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2` 模型及默认生成参数。首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
+
+- API Key 填写 Pixel 控制台创建的 Bearer Token。
+- `VITE_DEFAULT_API_KEY`（Vercel、GitHub Actions、本地构建）或 `DEFAULT_API_KEY`（Docker）可作为部署时的默认 Key；不填写则由用户在页面中输入。
+- `VITE_DEFAULT_API_URL`／`DEFAULT_API_URL` 仍可用于高级覆盖和旧部署兼容，普通 Pixel 部署无需填写。
+- Pixel 文档中的这套接口只负责图像。若要使用 `Agent` 对话，需要在「设置 → Agent 配置」另选或新建一套支持 `/v1/responses` 的文本模型配置，并填写对应服务商的 API 地址、Key 和语言模型 ID；它可以与 Pixel 图像配置组合为“混合”模式。
+
+Pixel 编辑文档定义单个 `image` 文件。画廊输入栏可以保留多张参考图；提交 Pixel 编辑请求时会按接口要求发送当前输入图，可选遮罩会以 `mask` PNG 一并上传。
+
+任务状态和输入图片会保存在浏览器本地。fal.ai 与配置了 `task_id + poll` 的异步服务商会在重新打开后继续查询原任务；Pixel 当前公开的是同步 Images 接口，页面刷新或关闭后会保留任务并在重开时自动重新提交。由于上游没有可查询的异步任务 ID，这种恢复可能在极端情况下产生重复请求或重复计费。若业务要求浏览器关闭期间仍保证原任务持续运行，需要接入自有后端任务队列。
+
 <a id="preset-config"></a>
 ### 预置配置说明
 
 所有部署方式都可以通过环境变量提供“预置配置”——部署端预先加入用户配置列表的 API 配置。用户打开页面时会自动看到这些配置，无需手动创建，格式和用户自己创建的配置完全一致。
 
-环境变量的值支持三种填写方式：
+高级预置配置环境变量仍支持三种填写方式；普通部署只需设置 Key：
 
 | 填写方式 | 说明 | 示例 |
 |------|------|------|
-| **直接填写 API 地址** | 自动创建一个 OpenAI 兼容的默认预置配置（ID 为 `default-openai`）并注入 API URL，其余参数（模型、超时等）使用应用默认值，用户只需补充 API Key。末尾带 `/` 时直接拼接接口，不补 `/v1` 前缀。适合只提供一个配置的部署。后续如需通过 JSON 或链接更新此配置，指定 `id` 为 `default-openai` 即可。 | `https://api.openai.com/v1` |
+| **直接填写 API 地址** | 覆盖内置 Pixel API 地址，并创建默认预置配置（ID 为 `default-openai`）；模型、超时等未指定参数使用应用默认值。 | `https://api.example.com/v1` |
 | **API 地址 + 查询参数** | 在地址后追加参数，可同时预填 Key、模型等字段。 | `https://api.openai.com/v1?model=gpt-image-2&apiMode=responses` |
 | **JSON 配置文件 / 导入链接** | 通过仓库内或本地的 JSON 文件路径（如 `./config.json`）、远程 URL 或含 `?settings=` 参数的导入链接提供完整预置配置，支持预置多个配置（OpenAI 兼容、fal.ai 或自定义供应商）。 | 详见 [预置配置 JSON 格式](#preset-config-json) |
 
@@ -202,13 +216,14 @@
 | 构建时变量 (Vercel/CF/本地) | Docker 运行变量 | 功能说明 |
 |------|------|------|
 | `VITE_DEFAULT_API_URL` | `DEFAULT_API_URL` | 设定预置配置值（支持 URL 形式或 JSON 格式，详见 [预置配置 JSON 格式](#preset-config-json)） |
+| `VITE_DEFAULT_API_KEY` | `DEFAULT_API_KEY` | 设定默认 API Key；Key 会进入前端运行配置，请勿把高权限长期密钥用于公开静态站点 |
 | `VITE_LOCK_PRESET_CONFIG_PARAMS=true` | `LOCK_PRESET_CONFIG_PARAMS=true` | 锁定预置配置中除 API Key 外的参数，并禁止编辑预置供应商定义；当前锁定配置引用的供应商不可删除，解除引用后可删除 |
 | `VITE_PREVENT_PRESET_CONFIG_DELETION=true` | `PREVENT_PRESET_CONFIG_DELETION=true` | 禁止删除预置配置和预置供应商，不锁定参数；普通项不受影响 |
 | `VITE_SHOW_PRESET_CONFIG_ONLY=true` | `SHOW_PRESET_CONFIG_ONLY=true` | 只允许使用当前预置配置，禁止创建、复制、删除、拖动、切换供应商和管理自定义供应商；未同时开启锁定时参数仍可编辑，API Key 始终可编辑 |
 
 > **未开启上述限制时的默认行为**：
 > - **参数更新**：API 地址、模型、超时等参数会与上一次部署快照比较；部署值发生变化时覆盖一次本地值，之后保留用户的本地修改，直到部署值再次变更。
-> - **API Key**：始终由用户在本地管理，重新部署不覆盖。
+> - **API Key**：部署默认 Key 仅用于首次配置；用户手动填写的 Key 保存在本地，重新部署不覆盖。
 > - **排序与删除**：预置配置可拖动；预置配置和预置供应商均允许删除，删除状态保存在浏览器中，重新部署不会恢复。
 > - **下线预置清理**：部署端移除某个预置后，若用户从未修改过该配置且没有历史生成任务引用，会自动从本地删除；若已被修改或仍被历史任务引用，则保留并转为普通配置。
 > - **失效供应商清理**：随预置引入的自定义供应商在不再被任何配置使用、且从未被用户修改时，也会自动清理。
@@ -224,10 +239,10 @@
 
 **预置配置**
 
-在 Vercel 项目的 **Settings → Environment Variables** 中设置 `VITE_DEFAULT_API_URL`，支持上述三种填写方式，可直接填写 API 地址或指定配置文件路径（如仓库内的 [`gpt-image-config.example.json`](gpt-image-config.example.json) 模板）。详见 [预置配置说明](#preset-config)。
+在 Vercel 项目的 **Settings → Environment Variables** 中设置 `VITE_DEFAULT_API_KEY`。Pixel API 地址已内置；如需高级覆盖，再设置 `VITE_DEFAULT_API_URL`。详见 [预置配置说明](#preset-config)。
 
 ```dotenv
-VITE_DEFAULT_API_URL=https://api.openai.com/v1
+VITE_DEFAULT_API_KEY=sk-你的-Pixel-Key
 ```
 
 **部署**
@@ -256,10 +271,10 @@ VITE_DEFAULT_API_URL=https://api.openai.com/v1
 
 **预置配置**
 
-在仓库 **Settings → Secrets and variables → Actions** 中添加 Secret `VITE_DEFAULT_API_URL`，支持上述三种填写方式，可直接填写 API 地址或指定配置文件路径（如仓库内的 [`gpt-image-config.example.json`](gpt-image-config.example.json) 模板）。详见 [预置配置说明](#preset-config)。
+在仓库 **Settings → Secrets and variables → Actions** 中添加 Secret `VITE_DEFAULT_API_KEY`。Pixel API 地址已内置；如需高级覆盖，再添加 `VITE_DEFAULT_API_URL`。详见 [预置配置说明](#preset-config)。
 
 ```dotenv
-VITE_DEFAULT_API_URL=https://api.openai.com/v1
+VITE_DEFAULT_API_KEY=sk-你的-Pixel-Key
 ```
 
 **部署**
@@ -277,10 +292,10 @@ VITE_DEFAULT_API_URL=https://api.openai.com/v1
 
 **预置配置**
 
-在执行构建前设置环境变量 `VITE_DEFAULT_API_URL`，支持上述三种填写方式，可直接填写 API 地址或指定配置文件路径（如仓库内的 [`gpt-image-config.example.json`](gpt-image-config.example.json) 模板）。Cloudflare Workers 不会在部署后改写静态文件，因此必须在构建前完成设置。详见 [预置配置说明](#preset-config)。
+在执行构建前设置环境变量 `VITE_DEFAULT_API_KEY`。Pixel API 地址已内置；如需高级覆盖，再设置 `VITE_DEFAULT_API_URL`。Cloudflare Workers 不会在部署后改写静态文件，因此必须在构建前完成设置。详见 [预置配置说明](#preset-config)。
 
 ```dotenv
-VITE_DEFAULT_API_URL=https://api.openai.com/v1
+VITE_DEFAULT_API_KEY=sk-你的-Pixel-Key
 ```
 
 **部署**
@@ -311,7 +326,8 @@ npm run deploy:cf
 
 | 变量 | 说明 |
 |------|------|
-| `DEFAULT_API_URL` | 预置配置，支持上述三种填写方式。若值指向 `.json` 文件或容器内路径，容器启动时自动读取并内嵌到页面。宿主机文件需通过 volume 挂载。详见 [预置配置说明](#preset-config) |
+| `DEFAULT_API_KEY` | 默认 Pixel API Key；只需填写此变量即可使用内置 Pixel 地址和模型。Key 会注入前端资源，请使用低权限/可轮换 Key |
+| `DEFAULT_API_URL` | 高级覆盖预置配置；留空时使用应用内置的 `https://api.ai-pixel.online/v1`。也支持 JSON 文件或导入链接，详见 [预置配置说明](#preset-config) |
 | `ENABLE_API_PROXY=true` | 开启 Nginx 同源代理，请求发往 `/api-proxy/{路径}` 再转发到 `API_PROXY_URL` |
 | `API_PROXY_URL` | 代理转发的完整 API 基础地址（不自动补 `/v1`） |
 | `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
@@ -334,7 +350,7 @@ npm run deploy:cf
 
 ```bash
 docker run -d -p 8080:80 \
-  -e DEFAULT_API_URL=https://api.openai.com/v1 \
+  -e DEFAULT_API_KEY=sk-你的-Pixel-Key \
   ghcr.io/cooksleep/gpt_image_playground:latest
 ```
 
@@ -367,7 +383,7 @@ services:
   gpt-image-playground:
     image: ghcr.io/cooksleep/gpt_image_playground:latest
     environment:
-      - DEFAULT_API_URL=https://api.openai.com/v1
+      - DEFAULT_API_KEY=sk-你的-Pixel-Key
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -385,12 +401,12 @@ services:
 
 **1. 预置配置（可选）**
 
-在项目根目录新建 `.env.local` 文件，设置 `VITE_DEFAULT_API_URL`，支持上述三种填写方式，可直接填写 API 地址或指定配置文件路径（如仓库内的 [`gpt-image-config.example.json`](gpt-image-config.example.json) 模板）。详见 [预置配置说明](#preset-config)。
+在项目根目录新建 `.env.local` 文件，设置 `VITE_DEFAULT_API_KEY`；Pixel API 地址已内置。需要高级覆盖时再设置 `VITE_DEFAULT_API_URL`。详见 [预置配置说明](#preset-config)。
 
 开发服务器启动或构建时若值指向远程 `.json` 文件或本地路径，内容会自动内嵌到页面。
 
 ```dotenv
-VITE_DEFAULT_API_URL=https://api.openai.com/v1
+VITE_DEFAULT_API_KEY=sk-你的-Pixel-Key
 ```
 
 **2. 安装依赖并启动**
