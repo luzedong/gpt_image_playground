@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 11: 启动 Key 引导与任务恢复（完成）
+Phase 12: Pixel Agent 默认配置统一（完成）
 
 ## Phases
 
@@ -102,6 +102,15 @@ Phase 11: 启动 Key 引导与任务恢复（完成）
 - [x] 补充测试、部署说明与浏览器验证
 - **Status:** complete
 
+### Phase 12: Pixel Agent 默认配置统一
+
+- [x] 默认 Agent 使用 `gpt-5.6-luna` 与 Responses API
+- [x] Agent 与生图配置共用 Pixel API URL 和 API Key
+- [x] 移除 Agent 新建流程中的 OpenAI 官方 URL 回退
+- [x] 迁移旧浏览器中自动生成的 OpenAI Agent 配置
+- [x] 完成测试；推送并重新部署 `jdy:5173`
+- **Status:** complete
+
 ## Key Questions
 
 1. 如何让 Studio 工作区复用现有 `InputBar`、`TaskGrid`、`submitTask` 和 IndexedDB，而不是复制一套状态？
@@ -120,6 +129,7 @@ Phase 11: 启动 Key 引导与任务恢复（完成）
 | Agent 语言模型继续复用 API Profile | 模型还依赖 URL、Key、Responses API 与推理强度，独立保存模型字符串会产生无效组合 |
 | Agent 配置页直接暴露语言模型 ID | 当前只显示 Profile 下拉框，用户无法确认或修改实际发送的模型，容易误以为模型被写死 |
 | 新部署仅注入 Key | Pixel API URL、Provider、Images API 模式、`gpt-image-2` 与当前生成参数属于产品默认值，不应要求部署者重复配置 |
+| 默认 Agent 使用混合模式 | `gpt-5.6-luna` 负责 Responses 对话，`gpt-image-2` 继续通过 Images API 生图；二者共享 Pixel URL 和 Key |
 
 ## Errors Encountered
 

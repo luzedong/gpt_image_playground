@@ -15,6 +15,20 @@
       "streamPartialImages": 1,
       "transparentBackgroundMethod": "api",
       "isDefault": true
+    },
+    {
+      "id": "default-pixel-agent",
+      "name": "Pixel Agent",
+      "provider": "openai",
+      "baseUrl": "https://api.ai-pixel.online/v1",
+      "model": "gpt-5.6-luna",
+      "timeout": 600,
+      "apiMode": "responses",
+      "codexCli": false,
+      "apiProxy": false,
+      "streamImages": true,
+      "streamPartialImages": 1,
+      "transparentBackgroundMethod": "api"
     }
   ]
 }

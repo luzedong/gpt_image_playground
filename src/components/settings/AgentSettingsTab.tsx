@@ -112,7 +112,7 @@ export default function AgentSettingsTab({
                 onBlur={(e) => commitAgentTextProfileModel(e.target.value)}
                 type="text"
                 disabled={agentTextProfileLocked}
-                placeholder="例如 gpt-5.6-sol"
+                placeholder="例如 gpt-5.6-luna"
                 className="w-full rounded-xl border border-blue-200/70 bg-white/70 px-3 py-2.5 font-mono text-sm text-gray-700 outline-none transition focus:border-blue-400 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </label>

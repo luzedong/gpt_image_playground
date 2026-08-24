@@ -7,9 +7,11 @@ import { isApiProxyAvailable, isApiProxyLocked, readClientDevProxyConfig } from 
 import { useStore, exportData, importData, clearData, type SettingsTab } from '../store'
 import {
   createDefaultOpenAIProfile,
+  createDefaultAgentProfile,
   DEFAULT_FAL_BASE_URL,
   DEFAULT_FAL_MODEL,
   DEFAULT_IMAGES_MODEL,
+  DEFAULT_PIXEL_BASE_URL,
   DEFAULT_RESPONSES_MODEL,
   DEFAULT_SETTINGS,
   findEquivalentApiProfile,
@@ -753,13 +755,12 @@ export default function SettingsModal() {
 
   const createAgentTextProfile = presetConfigOnly ? null : () => {
     setReusedTaskApiProfile(null)
-    const activeProfileIsPixel = /(?:^|\/\/)(?:api\.)?ai-pixel\.online(?=[:/]|$)/i.test(activeProfile.baseUrl.trim())
-    const source = activeProfile.provider === 'openai' && !activeProfileIsPixel ? activeProfile : null
-    const profile = createDefaultOpenAIProfile({
+    const source = activeProfile.provider === 'openai' ? activeProfile : createDefaultAgentProfile()
+    const profile = createDefaultAgentProfile({
       id: newId('openai-agent'),
-      name: source ? `${source.name || '默认'} · Agent` : 'Agent 文本模型',
-      baseUrl: source?.baseUrl ?? 'https://api.openai.com/v1',
-      apiKey: source?.apiKey ?? '',
+      name: `${source.name || '默认'} · Agent`,
+      baseUrl: source.baseUrl || DEFAULT_PIXEL_BASE_URL,
+      apiKey: source.apiKey,
       timeout: source?.timeout ?? DEFAULT_SETTINGS.timeout,
       apiMode: 'responses',
       model: DEFAULT_RESPONSES_MODEL,
@@ -773,14 +774,13 @@ export default function SettingsModal() {
       ...draft,
       profiles: [...draft.profiles, profile],
       activeProfileId: profile.id,
-      agentApiConfigMode: draft.agentApiConfigMode === 'off' ? 'native' : draft.agentApiConfigMode,
+      agentApiConfigMode: draft.agentApiConfigMode === 'off' ? 'hybrid' : draft.agentApiConfigMode,
       agentTextProfileId: profile.id,
+      agentImageProfileId: draft.agentImageProfileId ?? activeProfile.id,
     })
     commitSettings(nextDraft)
     setActiveTab('api')
-    showToast(activeProfileIsPixel
-      ? '已新建独立的 Responses 配置；Pixel Key 不能直接当语言模型 Key，请填写你的文本模型服务地址和 Key'
-      : '已新建 Responses 文本模型配置，请检查 API 地址、Key 和模型 ID', 'info')
+    showToast('已新建 Responses 文本模型配置，与当前图像配置共享 API 地址和 Key', 'info')
   }
 
   const duplicateActiveProfile = () => {

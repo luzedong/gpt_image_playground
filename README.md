@@ -185,12 +185,12 @@
 
 ### Pixel API 配置
 
-当前应用已内置 Pixel API 地址 `https://api.ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2` 模型及默认生成参数。首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
+当前应用已内置 Pixel API 地址 `https://api.ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2` 生图模型，以及默认的 `Responses API` Agent 文本模型 `gpt-5.6-luna`。两套配置自动共用同一个 Pixel API Key；首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
 
 - API Key 填写 Pixel 控制台创建的 Bearer Token。
 - `VITE_DEFAULT_API_KEY`（Vercel、GitHub Actions、本地构建）或 `DEFAULT_API_KEY`（Docker）可作为部署时的默认 Key；不填写则由用户在页面中输入。
 - `VITE_DEFAULT_API_URL`／`DEFAULT_API_URL` 仍可用于高级覆盖和旧部署兼容，普通 Pixel 部署无需填写。
-- Pixel 文档中的这套接口只负责图像。若要使用 `Agent` 对话，需要在「设置 → Agent 配置」另选或新建一套支持 `/v1/responses` 的文本模型配置，并填写对应服务商的 API 地址、Key 和语言模型 ID；它可以与 Pixel 图像配置组合为“混合”模式。
+- Agent 默认使用同一 Pixel 地址的 `/v1/responses` 和 `gpt-5.6-luna`，图像工具继续使用 `gpt-image-2` 的 Images API；两者共用同一个 Key，并以“混合”模式自动组合。若切换到其他服务商，才需要在「设置 → Agent 配置」选择或新建对应的 Responses 文本模型配置。
 
 Pixel 编辑文档定义单个 `image` 文件。画廊输入栏可以保留多张参考图；提交 Pixel 编辑请求时会按接口要求发送当前输入图，可选遮罩会以 `mask` PNG 一并上传。
 

@@ -146,6 +146,10 @@
 
 ## Agent 语言模型配置问题
 
+- 2026-08-24 追加确认：Pixel 服务同时提供 Responses 文本模型，默认应使用 `gpt-5.6-luna`，并与 `gpt-image-2` 共用 `https://api.ai-pixel.online/v1` 和同一个 Key。
+- 当前出现 `https://api.openai.com/v1` 的直接原因是 `SettingsModal.createAgentTextProfile` 对 Pixel Profile 主动禁用复用，并将 Agent Base URL 硬编码为 OpenAI 官方地址。
+- 为确保已有浏览器升级后生效，需要提升 Zustand 持久化版本，并仅迁移此前由应用自动创建的默认 Agent Profile，避免覆盖用户自己配置的 Responses 服务。
+
 - Agent 请求实际使用 `getAgentTextApiProfile(settings)` 返回 Profile 的 `model` 字段，请求层没有把语言模型写死。
 - 当前 Agent 配置页只允许选择“文本模型 API 配置”，没有直接显示或编辑模型 ID；当“使用独立的 API 配置”为“关闭”时，整段文本模型设置还会被隐藏。
 - Agent 文本 Profile 仅接受 `provider=openai` 且 `apiMode=responses` 的配置。Pixel 的 `gpt-image-2` 配置属于 Images API，因此不会进入文本模型下拉列表。

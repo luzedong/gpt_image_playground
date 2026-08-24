@@ -2,6 +2,18 @@
 
 ## Session: 2026-08-24
 
+### Phase 12: Pixel Agent 默认配置统一
+
+- **Status:** complete
+- 用户确认 Pixel 同一个 URL 和 Key 同时支持 Agent 与生图，Agent 默认模型应为 `gpt-5.6-luna`。
+- 定位到旧行为来源：默认仅创建 Images Profile；Agent 新建流程将 Pixel 排除，并硬编码回退到 `https://api.openai.com/v1`，默认 Responses 模型还是 `gpt-5.6-sol`。
+- 目标配置：Pixel Images `gpt-image-2` + Pixel Responses `gpt-5.6-luna`，默认混合模式且共享凭据；旧版本自动生成的空白 OpenAI Agent 配置需要一次性迁移。
+- 已新增两个内置 Profile：`default-openai`（Images / `gpt-image-2`）与 `default-pixel-agent`（Responses / `gpt-5.6-luna`），默认使用混合模式。
+- 内置两套 Profile 的 API URL 和 Key 始终同步；启动 Key 弹窗保存到图像 Profile 后会同步到 Agent Profile。
+- 新建 Agent 文本 Profile 改为复用当前 Pixel URL 和 Key，不再回退 `https://api.openai.com/v1`。
+- Zustand 持久化版本升级到 3：旧 Pixel 单 Profile 自动补 Agent；旧自动生成的 `Agent 文本模型`/`openai-agent-*` 配置改为 Pixel URL、共享 Key 和 Luna 模型；用户自定义 Responses Profile 不覆盖。
+- 最终本地验证：34 个测试文件、536 项测试全部通过；生产构建和 `git diff --check` 通过。
+
 ### Phase 10: 部署默认配置固化
 
 - **Status:** complete

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { initStore, restoreExplicitPresetConfig, setPageLifecycleEnding, useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, getExplicitUrlSettingsIds, hasUrlSettingParams } from './lib/urlSettings'
-import { createDefaultOpenAIProfile, hasDefaultPresetConfig, isAgentTextApiProfile, normalizeSettings } from './lib/apiProfiles'
+import { createDefaultPixelProfiles, DEFAULT_OPENAI_PROFILE_ID, hasDefaultPresetConfig, isAgentTextApiProfile, normalizeSettings } from './lib/apiProfiles'
 import { getCustomProviderConfigUrl, hasEmbeddedDefaultConfig, loadCustomProviderSettingsFromUrl, loadEmbeddedDefaultConfig } from './lib/customProviderConfigUrl'
 import { getDefaultPresetProfileId, getPresetProfileIds, isPresetConfigOnlyEnabled, setPresetConfig } from './lib/presetConfig'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
@@ -72,7 +72,10 @@ export default function App() {
           : hasDefaultPresetConfig()
             ? {
                 customProviders: [],
-                profiles: [{ ...createDefaultOpenAIProfile(), isDefault: true }],
+                profiles: createDefaultPixelProfiles().map((profile) => ({
+                  ...profile,
+                  isDefault: profile.id === DEFAULT_OPENAI_PROFILE_ID ? true : undefined,
+                })),
               }
             : null
         setPresetConfig(importedSettings)

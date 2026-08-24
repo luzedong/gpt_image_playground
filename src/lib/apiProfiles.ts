@@ -31,10 +31,11 @@ const DEFAULT_API_URL_PATCH = isImportableConfigUrl(RAW_DEFAULT_API_URL)
 const DEFAULT_BASE_URL = DEFAULT_API_URL_PATCH?.baseUrl ?? ''
 const DEFAULT_API_KEY = DEFAULT_API_URL_PATCH?.apiKey ?? RAW_DEFAULT_API_KEY
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
-export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-sol'
+export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-luna'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
+export const DEFAULT_AGENT_PROFILE_ID = 'default-pixel-agent'
 export const DEFAULT_API_TIMEOUT = 600
 
 const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'sb2api-async', 'fal'])
@@ -378,6 +379,27 @@ export function createDefaultOpenAIProfile(overrides: Partial<ApiProfile> = {}):
   }
 }
 
+export function createDefaultAgentProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
+  return createDefaultOpenAIProfile({
+    id: DEFAULT_AGENT_PROFILE_ID,
+    name: 'Pixel Agent',
+    apiMode: 'responses',
+    model: DEFAULT_RESPONSES_MODEL,
+    ...overrides,
+  })
+}
+
+export function createDefaultPixelProfiles(): ApiProfile[] {
+  const imageProfile = createDefaultOpenAIProfile()
+  return [
+    imageProfile,
+    createDefaultAgentProfile({
+      baseUrl: imageProfile.baseUrl,
+      apiKey: imageProfile.apiKey,
+    }),
+  ]
+}
+
 export function createDefaultFalProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
   return {
     id: `fal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
@@ -668,23 +690,55 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : undefined,
     streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages),
   })
-  const normalizedProfiles = Array.isArray(record.profiles) && record.profiles.length
+  let normalizedProfiles = Array.isArray(record.profiles) && record.profiles.length
     ? record.profiles.map((profile) => {
         const provider = isRecord(profile) && typeof profile.provider === 'string' ? profile.provider : ''
         const fallback = nativeTransparentProviderIds.has(provider) ? { transparentBackgroundMethod: 'api' as const } : undefined
         return normalizeApiProfile(profile, fallback, customProviderIds, nativeTransparentProviderIds)
       })
     : [legacyProfile]
+
+  const pixelImageProfile = normalizedProfiles.find(isBuiltInPixelImageProfile)
+  const legacyAgentProfile = normalizedProfiles.find(isLegacyAutoCreatedAgentProfile)
+  if (pixelImageProfile && legacyAgentProfile) {
+    normalizedProfiles = normalizedProfiles.map((profile) => profile.id === legacyAgentProfile.id
+      ? {
+          ...profile,
+          name: profile.name === 'Agent 文本模型' ? 'Pixel Agent' : profile.name,
+          baseUrl: pixelImageProfile.baseUrl,
+          apiKey: pixelImageProfile.apiKey,
+          model: profile.model === 'gpt-5.6-sol' || !profile.model.trim() ? DEFAULT_RESPONSES_MODEL : profile.model,
+          apiMode: 'responses',
+        }
+      : profile)
+  }
   const defaultProfileId = getDefaultApiProfileId({ profiles: normalizedProfiles })
-  const profiles = normalizedProfiles.map((profile) => ({
+  const profilesWithDefaultMarkers = normalizedProfiles.map((profile) => ({
     ...profile,
     isDefault: profile.id === defaultProfileId ? true : undefined,
   }))
+  const defaultImageProfile = profilesWithDefaultMarkers.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)
+  const defaultAgentProfile = profilesWithDefaultMarkers.find((profile) => profile.id === DEFAULT_AGENT_PROFILE_ID)
+    ?? profilesWithDefaultMarkers.find(isLegacyAutoCreatedAgentProfile)
+  const sharedCredentialSource = defaultImageProfile && defaultAgentProfile
+    ? record.activeProfileId === defaultAgentProfile.id ? defaultAgentProfile : defaultImageProfile
+    : null
+  const profiles = profilesWithDefaultMarkers.map((profile) => {
+    if (!sharedCredentialSource || !defaultAgentProfile || (profile.id !== DEFAULT_OPENAI_PROFILE_ID && profile.id !== defaultAgentProfile.id)) return profile
+    return {
+      ...profile,
+      baseUrl: sharedCredentialSource.baseUrl,
+      apiKey: sharedCredentialSource.apiKey,
+    }
+  })
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
   const active = profiles.find((p) => p.id === activeProfileId) ?? profiles[0]
-  const agentApiConfigMode = normalizeAgentApiConfigMode(record.agentApiConfigMode)
+  const hasPixelAgentPair = profiles.some((profile) => isAgentTextApiProfile(profile)) && Boolean(profiles.find(isBuiltInPixelImageProfile))
+  const agentApiConfigMode = record.agentApiConfigMode === undefined && hasPixelAgentPair
+    ? 'hybrid'
+    : normalizeAgentApiConfigMode(record.agentApiConfigMode)
   const firstAgentTextProfile = profiles.find(isAgentTextApiProfile)
   const agentTextProfileId = typeof record.agentTextProfileId === 'string' && profiles.some((p) => p.id === record.agentTextProfileId && isAgentTextApiProfile(p))
     ? record.agentTextProfileId
@@ -878,11 +932,41 @@ function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
     profile.transparentBackgroundMethod === 'api'
 }
 
+function isDefaultAgentProfile(profile: ApiProfile): boolean {
+  const expected = createDefaultAgentProfile()
+  return JSON.stringify({ ...profile, isDefault: undefined }) === JSON.stringify({ ...expected, isDefault: undefined })
+}
+
+function isBuiltInPixelImageProfile(profile: ApiProfile): boolean {
+  return profile.id === DEFAULT_OPENAI_PROFILE_ID &&
+    profile.provider === 'openai' &&
+    profile.apiMode === 'images' &&
+    profile.model === DEFAULT_IMAGES_MODEL
+}
+
+function isLegacyAutoCreatedAgentProfile(profile: ApiProfile): boolean {
+  return profile.provider === 'openai' &&
+    profile.apiMode === 'responses' &&
+    (profile.id === DEFAULT_AGENT_PROFILE_ID || profile.id.startsWith('openai-agent-') || profile.name === 'Agent 文本模型') &&
+    (profile.model === 'gpt-5.6-sol' || profile.model === DEFAULT_RESPONSES_MODEL || profile.name === 'Agent 文本模型')
+}
+
 function hasOnlyDefaultProfiles(settings: AppSettings): boolean {
-  return settings.customProviders.length === 0 &&
+  const imageProfile = settings.profiles.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)
+  const agentProfile = settings.profiles.find((profile) => profile.id === DEFAULT_AGENT_PROFILE_ID)
+  const legacySingleProfile = settings.customProviders.length === 0 &&
     settings.profiles.length === 1 &&
     settings.activeProfileId === DEFAULT_OPENAI_PROFILE_ID &&
-    isDefaultOpenAIProfile(settings.profiles[0])
+    Boolean(imageProfile && isDefaultOpenAIProfile(imageProfile))
+  const pairedProfiles = settings.customProviders.length === 0 &&
+    settings.profiles.length === 2 &&
+    settings.activeProfileId === DEFAULT_OPENAI_PROFILE_ID &&
+    settings.agentApiConfigMode === 'hybrid' &&
+    settings.agentTextProfileId === DEFAULT_AGENT_PROFILE_ID &&
+    settings.agentImageProfileId === DEFAULT_OPENAI_PROFILE_ID &&
+    Boolean(imageProfile && isDefaultOpenAIProfile(imageProfile)) &&
+    Boolean(agentProfile && isDefaultAgentProfile(agentProfile))
+  return legacySingleProfile || pairedProfiles
 }
 
 function createImportedProfileId(provider: ApiProvider, usedIds: Set<string>): string {
@@ -1200,13 +1284,23 @@ export function mergePresetImportedSettings(
   for (const profile of options.previousPresetConfig?.profiles ?? []) {
     if (!sourceProfileIds.has(profile.id) && profiles.some((item) => item.id === profile.id)) presetProfiles.push(profile)
   }
+  const restoredDefaultProfiles = profiles.length === 0 ? createDefaultPixelProfiles() : profiles
 
   return {
     settings: normalizeSettings({
       ...current,
       customProviders,
-      profiles,
-      activeProfileId: replacingPristineDefault ? sourceDefaultProfileId ?? nextProfiles[0].id : current.activeProfileId,
+      profiles: restoredDefaultProfiles,
+      activeProfileId: profiles.length === 0
+        ? DEFAULT_OPENAI_PROFILE_ID
+        : replacingPristineDefault ? sourceDefaultProfileId ?? nextProfiles[0].id : current.activeProfileId,
+      ...(profiles.length === 0
+        ? {
+            agentApiConfigMode: 'hybrid' as const,
+            agentTextProfileId: DEFAULT_AGENT_PROFILE_ID,
+            agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
+          }
+        : {}),
     }),
     presetConfig: {
       customProviders: presetProviders,
@@ -1226,6 +1320,8 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   streamImages: DEFAULT_API_URL_PATCH?.streamImages ?? getDefaultStreamImages('openai', DEFAULT_API_URL_PATCH?.apiMode ?? 'images'),
   streamPartialImages: DEFAULT_API_URL_PATCH?.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES,
   customProviders: [],
+  profiles: createDefaultPixelProfiles(),
+  activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
   clearInputAfterSubmit: false,
   persistInputOnRestart: true,
   reuseTaskApiProfileTemporarily: false,
@@ -1238,7 +1334,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,
   agentMathFormattingPrompt: true,
-  agentApiConfigMode: 'off',
-  agentTextProfileId: null,
-  agentImageProfileId: null,
+  agentApiConfigMode: 'hybrid',
+  agentTextProfileId: DEFAULT_AGENT_PROFILE_ID,
+  agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
 })

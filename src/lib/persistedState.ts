@@ -1,5 +1,5 @@
 import type { AgentConversation, AgentInputDraft, AppMode, AppSettings, FavoriteCollection, InputImage, MaskDraft, TaskParams } from '../types'
-import { normalizeSettings } from './apiProfiles'
+import { createDefaultAgentProfile, DEFAULT_AGENT_PROFILE_ID, DEFAULT_IMAGES_MODEL, DEFAULT_OPENAI_PROFILE_ID, DEFAULT_PIXEL_BASE_URL, DEFAULT_RESPONSES_MODEL, normalizeSettings } from './apiProfiles'
 import { normalizeAgentConversations } from './agentConversationState'
 import { ensureDefaultFavoriteCollection, normalizeFavoriteCollections, resolveDefaultFavoriteCollectionId } from './favoriteState'
 import { cleanStaleAgentInputDrafts, getPersistableAgentInputDrafts, isEmptyAgentInputDraft, normalizeAgentInputDraft, normalizeAgentInputDrafts, normalizeAgentInputDraftsByKey, saveGalleryInputDraft } from './inputDraftState'
@@ -123,11 +123,79 @@ export function createPersistedState(state: PersistedStateSource, includeLegacyA
   }
 }
 
-export function migratePersistedState(persistedState: unknown, _version?: number): unknown {
+export function migratePersistedState(persistedState: unknown, version?: number): unknown {
   if (!isRecord(persistedState)) return persistedState
-  return {
+  const migrated: Record<string, unknown> = {
     ...persistedState,
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
+  }
+  if ((version ?? 0) >= 3 || !isRecord(migrated.settings)) return migrated
+
+  const settings = migrated.settings
+  const rawProfiles = settings.profiles
+  if (!Array.isArray(rawProfiles)) return migrated
+  const profiles: Record<string, unknown>[] = rawProfiles.filter((profile): profile is Record<string, unknown> => isRecord(profile))
+  const imageProfile = profiles.find((profile) =>
+    profile.id === DEFAULT_OPENAI_PROFILE_ID &&
+    (profile.provider === undefined || profile.provider === 'openai') &&
+    (profile.apiMode === undefined || profile.apiMode === 'images') &&
+    (profile.model === undefined || profile.model === DEFAULT_IMAGES_MODEL) &&
+    (
+      profile.name === 'Pixel API' ||
+      profile.baseUrl === DEFAULT_PIXEL_BASE_URL ||
+      profile.baseUrl === `${DEFAULT_PIXEL_BASE_URL}/`
+    ),
+  )
+  if (!imageProfile) return migrated
+
+  const responsesProfiles = profiles.filter((profile) => profile.provider === 'openai' && profile.apiMode === 'responses')
+  const selectedAgentProfile = typeof settings.agentTextProfileId === 'string'
+    ? responsesProfiles.find((profile) => profile.id === settings.agentTextProfileId)
+    : undefined
+  const autoCreatedAgentProfile = responsesProfiles.find((profile) =>
+    profile.id === DEFAULT_AGENT_PROFILE_ID ||
+    (typeof profile.id === 'string' && profile.id.startsWith('openai-agent-')) ||
+    profile.name === 'Agent 文本模型',
+  )
+  const customSelectedAgentProfile = selectedAgentProfile && selectedAgentProfile !== autoCreatedAgentProfile
+    ? selectedAgentProfile
+    : null
+  if (customSelectedAgentProfile) return migrated
+
+  const imageBaseUrl = typeof imageProfile.baseUrl === 'string' && imageProfile.baseUrl.trim()
+    ? imageProfile.baseUrl
+    : DEFAULT_PIXEL_BASE_URL
+  const imageApiKey = typeof imageProfile.apiKey === 'string' ? imageProfile.apiKey : ''
+  const autoCreatedAgentProfileId = typeof autoCreatedAgentProfile?.id === 'string' ? autoCreatedAgentProfile.id : DEFAULT_AGENT_PROFILE_ID
+  const agentProfile = autoCreatedAgentProfile
+    ? {
+        ...autoCreatedAgentProfile,
+        id: autoCreatedAgentProfileId,
+        name: autoCreatedAgentProfile.name === 'Agent 文本模型' ? 'Pixel Agent' : autoCreatedAgentProfile.name,
+        baseUrl: imageBaseUrl,
+        apiKey: imageApiKey,
+        model: autoCreatedAgentProfile.model === 'gpt-5.6-sol' || typeof autoCreatedAgentProfile.model !== 'string' || !autoCreatedAgentProfile.model.trim()
+          ? DEFAULT_RESPONSES_MODEL
+          : autoCreatedAgentProfile.model,
+        apiMode: 'responses',
+      }
+    : createDefaultAgentProfile({ baseUrl: imageBaseUrl, apiKey: imageApiKey })
+  const agentProfileId = typeof agentProfile.id === 'string' ? agentProfile.id : DEFAULT_AGENT_PROFILE_ID
+
+  return {
+    ...migrated,
+    settings: {
+      ...settings,
+      profiles: autoCreatedAgentProfile
+        ? profiles.map((profile) => profile === autoCreatedAgentProfile ? agentProfile : profile)
+        : [...profiles, agentProfile],
+      activeProfileId: settings.activeProfileId === autoCreatedAgentProfile?.id
+        ? DEFAULT_OPENAI_PROFILE_ID
+        : settings.activeProfileId,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: agentProfileId,
+      agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
+    },
   }
 }
 

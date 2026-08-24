@@ -52,7 +52,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, new URLSearchParams('apiUrl=https://api.example.com/v1&apiKey=test-key')),
     })
 
-    expect(next.profiles).toHaveLength(2)
+    expect(next.profiles).toHaveLength(3)
     expect(next.activeProfileId).not.toBe(current.activeProfileId)
     expect(next.profiles.find((profile) => profile.id === next.activeProfileId)).toMatchObject({
       name: 'URL 参数配置',
@@ -534,7 +534,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, new URLSearchParams('apiUrl=https://api.example.com/v1&apiKey=test-key&model=custom-model&profileName=导入配置&apiMode=responses')),
     })
 
-    expect(next.profiles).toHaveLength(1)
+    expect(next.profiles).toHaveLength(2)
     expect(next.customProviders).toHaveLength(0)
     expect(next.activeProfileId).toBe(current.activeProfileId)
     expect(next.profiles[0]).toMatchObject({
@@ -584,7 +584,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, params),
     })
 
-    expect(next.profiles).toHaveLength(1)
+    expect(next.profiles).toHaveLength(2)
     expect(next.customProviders).toHaveLength(0)
     expect(next.activeProfileId).toBe(current.activeProfileId)
     expect(next.profiles[0]).toMatchObject({
@@ -642,7 +642,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, params),
     })
 
-    expect(next.profiles).toHaveLength(1)
+    expect(next.profiles).toHaveLength(2)
     expect(next.customProviders).toHaveLength(0)
     expect(next.activeProfileId).toBe(current.activeProfileId)
     expect(next.profiles[0]).toMatchObject({

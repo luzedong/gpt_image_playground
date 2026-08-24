@@ -787,7 +787,7 @@ describe('preset deletion state', () => {
     await useStore.getState().setPresetImportedSettings({ customProviders: [], profiles: [] })
 
     const state = useStore.getState()
-    expect(state.settings.profiles.map((item) => item.id)).toEqual([DEFAULT_SETTINGS.profiles[0].id])
+    expect(state.settings.profiles.map((item) => item.id)).toEqual(DEFAULT_SETTINGS.profiles.map((profile) => profile.id))
     expect(state.settings.customProviders).toEqual([])
     expect(state.previousPresetConfig).toBeNull()
   })
@@ -4979,6 +4979,8 @@ describe('agent batch reference resolution', () => {
         model: DEFAULT_RESPONSES_MODEL,
         profiles: [responsesProfile],
         activeProfileId: responsesProfile.id,
+        agentApiConfigMode: 'native',
+        agentTextProfileId: responsesProfile.id,
       }),
       prompt: '继续生成',
       inputImages: [],

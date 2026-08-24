@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentConversation, AppSettings, FavoriteCollection } from '../types'
 import { DEFAULT_PARAMS } from '../types'
-import { DEFAULT_SETTINGS } from './apiProfiles'
+import { DEFAULT_AGENT_PROFILE_ID, DEFAULT_IMAGES_MODEL, DEFAULT_OPENAI_PROFILE_ID, DEFAULT_PIXEL_BASE_URL, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, normalizeSettings } from './apiProfiles'
 import { DEFAULT_FAVORITE_COLLECTION_ID } from './favoriteState'
 import { createPersistedState, mergePersistedAgentConversations, migratePersistedState, normalizePersistedState } from './persistedState'
 
@@ -110,6 +110,81 @@ describe('persisted state codec', () => {
     expect(serialized).toContain('image_generation_call')
     expect(serialized).not.toContain('legacy-base64')
     expect(migratePersistedState('invalid', 1)).toBe('invalid')
+  })
+
+  it('migrates the old Pixel image-only defaults to a shared-key Agent configuration', () => {
+    const migrated = migratePersistedState({
+      settings: {
+        profiles: [{
+          id: DEFAULT_OPENAI_PROFILE_ID,
+          name: 'Pixel API',
+          provider: 'openai',
+          baseUrl: DEFAULT_PIXEL_BASE_URL,
+          apiKey: 'pixel-key',
+          model: DEFAULT_IMAGES_MODEL,
+          apiMode: 'images',
+        }],
+        activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
+        agentApiConfigMode: 'off',
+        agentTextProfileId: null,
+        agentImageProfileId: null,
+      },
+    }, 2) as { settings: AppSettings }
+    const settings = normalizeSettings(migrated.settings)
+
+    expect(settings).toMatchObject({
+      activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: DEFAULT_AGENT_PROFILE_ID,
+      agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
+    })
+    expect(settings.profiles.find((profile) => profile.id === DEFAULT_AGENT_PROFILE_ID)).toMatchObject({
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      apiKey: 'pixel-key',
+      model: DEFAULT_RESPONSES_MODEL,
+      apiMode: 'responses',
+    })
+  })
+
+  it('migrates the old auto-created OpenAI Agent profile without changing its id', () => {
+    const migrated = migratePersistedState({
+      settings: {
+        profiles: [
+          {
+            id: DEFAULT_OPENAI_PROFILE_ID,
+            name: 'Pixel API',
+            provider: 'openai',
+            baseUrl: DEFAULT_PIXEL_BASE_URL,
+            apiKey: 'pixel-key',
+            model: DEFAULT_IMAGES_MODEL,
+            apiMode: 'images',
+          },
+          {
+            id: 'openai-agent-old',
+            name: 'Agent 文本模型',
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: '',
+            model: 'gpt-5.6-sol',
+            apiMode: 'responses',
+          },
+        ],
+        activeProfileId: 'openai-agent-old',
+        agentApiConfigMode: 'native',
+        agentTextProfileId: 'openai-agent-old',
+        agentImageProfileId: null,
+      },
+    }, 2) as { settings: AppSettings }
+    const settings = normalizeSettings(migrated.settings)
+
+    expect(settings.activeProfileId).toBe(DEFAULT_OPENAI_PROFILE_ID)
+    expect(settings.agentTextProfileId).toBe('openai-agent-old')
+    expect(settings.profiles.find((profile) => profile.id === 'openai-agent-old')).toMatchObject({
+      name: 'Pixel Agent',
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      apiKey: 'pixel-key',
+      model: DEFAULT_RESPONSES_MODEL,
+    })
   })
 
   it('normalizes legacy conversations, active ID, and top-level Agent draft fallback', () => {

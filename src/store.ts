@@ -536,7 +536,7 @@ export const useStore = create<AppState>()(
         if (settings.agentApiConfigMode === 'off' && activeProfile.provider === 'openai' && activeProfile.apiMode !== 'responses') {
           state.setConfirmDialog({
             title: '需要 Responses API 配置',
-            message: `当前配置「${activeProfile.name}」使用的是 Images API，只负责生图和编辑图，不能作为 Agent 的语言模型。\n\n请前往 Agent 配置页新建或选择一套支持 Responses API 的文本模型配置；Pixel 的图像配置可以继续保留，二者可在混合模式中组合使用。`,
+            message: `当前配置「${activeProfile.name}」使用的是 Images API，只负责生图和编辑图。默认 Pixel Agent 已使用同一个 API 地址和 Key；请前往 Agent 配置页启用默认混合模式，或选择其他 Responses 文本模型配置。`,
             confirmText: '去设置',
             cancelText: '取消',
             action: () => {
@@ -1028,7 +1028,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'gpt-image-playground',
-      version: 2,
+      version: 3,
       migrate: migratePersistedState,
       partialize: getPersistedState,
       merge: mergePersistedState,

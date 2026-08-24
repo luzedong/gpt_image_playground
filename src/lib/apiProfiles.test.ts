@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  DEFAULT_AGENT_PROFILE_ID,
   DEFAULT_FAL_BASE_URL,
   DEFAULT_FAL_MODEL,
   DEFAULT_IMAGES_MODEL,
   DEFAULT_OPENAI_PROFILE_ID,
   DEFAULT_PIXEL_BASE_URL,
+  DEFAULT_RESPONSES_MODEL,
   DEFAULT_SETTINGS,
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
@@ -61,6 +63,78 @@ describe('normalizeApiProfile', () => {
 })
 
 describe('normalizeSettings', () => {
+  it('uses Pixel defaults for image and Agent profiles with shared credentials', () => {
+    const settings = normalizeSettings(DEFAULT_SETTINGS)
+    const imageProfile = settings.profiles.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)
+    const agentProfile = settings.profiles.find((profile) => profile.id === DEFAULT_AGENT_PROFILE_ID)
+
+    expect(imageProfile).toMatchObject({
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      model: DEFAULT_IMAGES_MODEL,
+      apiMode: 'images',
+    })
+    expect(agentProfile).toMatchObject({
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      model: DEFAULT_RESPONSES_MODEL,
+      apiMode: 'responses',
+      apiKey: imageProfile?.apiKey,
+    })
+    expect(settings).toMatchObject({
+      activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: DEFAULT_AGENT_PROFILE_ID,
+      agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
+    })
+  })
+
+  it('keeps the built-in Pixel image and Agent profiles on the same URL and key', () => {
+    const settings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID
+        ? { ...profile, baseUrl: 'https://pixel.example.com/v1', apiKey: 'shared-key' }
+        : { ...profile, baseUrl: 'https://api.openai.com/v1', apiKey: 'stale-key' }),
+      activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
+    })
+
+    expect(settings.profiles.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)).toMatchObject({
+      baseUrl: 'https://pixel.example.com/v1',
+      apiKey: 'shared-key',
+    })
+    expect(settings.profiles.find((profile) => profile.id === DEFAULT_AGENT_PROFILE_ID)).toMatchObject({
+      baseUrl: 'https://pixel.example.com/v1',
+      apiKey: 'shared-key',
+    })
+  })
+
+  it('updates the legacy auto-created Agent profile to Pixel and Luna', () => {
+    const imageProfile = createDefaultOpenAIProfile({ apiKey: 'pixel-key' })
+    const settings = normalizeSettings({
+      profiles: [
+        imageProfile,
+        createDefaultOpenAIProfile({
+          id: 'openai-agent-legacy',
+          name: 'Agent 文本模型',
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: '',
+          apiMode: 'responses',
+          model: 'gpt-5.6-sol',
+        }),
+      ],
+      activeProfileId: imageProfile.id,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: 'openai-agent-legacy',
+      agentImageProfileId: imageProfile.id,
+    })
+
+    expect(settings.profiles.find((profile) => profile.id === 'openai-agent-legacy')).toMatchObject({
+      name: 'Pixel Agent',
+      baseUrl: DEFAULT_PIXEL_BASE_URL,
+      apiKey: 'pixel-key',
+      model: DEFAULT_RESPONSES_MODEL,
+      apiMode: 'responses',
+    })
+  })
+
   it('preserves a non-empty profile description and removes an empty one', () => {
     const settings = normalizeSettings({
       profiles: [
@@ -491,7 +565,7 @@ describe('mergeImportedSettings', () => {
     })
 
     expect(merged.customProviders.map((provider) => provider.id)).toEqual(['custom-existing', 'custom-imported'])
-    expect(merged.profiles).toHaveLength(2)
+    expect(merged.profiles).toHaveLength(3)
   })
 
   it('appends imported custom providers and keeps imported custom profile references', () => {
