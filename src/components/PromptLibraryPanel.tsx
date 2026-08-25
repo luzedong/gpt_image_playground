@@ -133,7 +133,7 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onCopy
     try {
       setManifest(await fetchAwesomePromptManifest())
     } catch (err) {
-      setError(err instanceof DOMException && err.name === 'AbortError' ? '请求超时，请检查网络后重试' : err instanceof Error ? err.message : '素材库加载失败')
+      setError(err instanceof DOMException && err.name === 'AbortError' ? '素材请求超时，请刷新页面或检查部署资源' : err instanceof Error ? err.message : '素材库加载失败')
     } finally {
       setLoading(false)
     }
@@ -161,7 +161,7 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onCopy
           <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"><LibraryIcon type="sparkles" className="h-4 w-4" /></span>
           <div className="min-w-0">
             <p className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">GPT-Image Prompt 灵感库</p>
-            <p className="mt-1 text-[10px] leading-4 text-violet-800/70 dark:text-violet-200/60">按需加载案例图。使用 Prompt 可直接开始创作，导入图片会下载单张参考图。</p>
+            <p className="mt-1 text-[10px] leading-4 text-violet-800/70 dark:text-violet-200/60">案例清单与图片由本站提供。使用 Prompt 可直接开始创作，导入图片会读取单张参考图。</p>
           </div>
         </div>
         <p className="mt-2 text-[9px] leading-4 text-gray-500 dark:text-gray-500">案例来自公开社区，仅作灵感预览；请保留来源并遵守<a href={AWESOME_PROMPT_DISCLAIMER_URL} target="_blank" rel="noopener noreferrer" className="ml-1 text-gray-600 underline decoration-gray-400 underline-offset-2 hover:text-gray-900 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200">上游免责声明</a>。</p>
@@ -181,7 +181,7 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onCopy
             {categories.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
-        <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="刷新素材库" title="刷新素材库">
+        <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="重新加载素材库" title="重新加载素材库">
           <LibraryIcon type="refresh" />
         </button>
       </div>

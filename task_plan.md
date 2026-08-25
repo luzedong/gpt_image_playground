@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 12: Pixel Agent 默认配置统一（完成）
+Phase 13: 灵感库本地化与手动同步（完成）
 
 ## Phases
 
@@ -111,6 +111,15 @@ Phase 12: Pixel Agent 默认配置统一（完成）
 - [x] 完成测试；推送并重新部署 `jdy:5173`
 - **Status:** complete
 
+### Phase 13: 灵感库本地化与手动同步
+
+- [x] 新增手动同步脚本，将上游清单和案例图拉取到 `public/prompt-library`
+- [x] 执行脚本并将当前素材快照纳入 Git
+- [x] 前端改为仅请求本站同源清单和图片
+- [x] 更新测试、README 与部署静态资源缓存配置
+- [x] 完成构建、全量测试、提交并推送 `main`
+- **Status:** complete
+
 ## Key Questions
 
 1. 如何让 Studio 工作区复用现有 `InputBar`、`TaskGrid`、`submitTask` 和 IndexedDB，而不是复制一套状态？
@@ -130,6 +139,7 @@ Phase 12: Pixel Agent 默认配置统一（完成）
 | Agent 配置页直接暴露语言模型 ID | 当前只显示 Profile 下拉框，用户无法确认或修改实际发送的模型，容易误以为模型被写死 |
 | 新部署仅注入 Key | Pixel API URL、Provider、Images API 模式、`gpt-image-2` 与当前生成参数属于产品默认值，不应要求部署者重复配置 |
 | 默认 Agent 使用混合模式 | `gpt-5.6-luna` 负责 Responses 对话，`gpt-image-2` 继续通过 Images API 生图；二者共享 Pixel URL 和 Key |
+| 灵感库使用 Git 内置快照 + 手动同步脚本 | 用户不需要依赖浏览器直连 GitHub，也不运行后台定时任务；升级素材时由维护者执行脚本并提交快照 |
 
 ## Errors Encountered
 
@@ -144,6 +154,7 @@ Phase 12: Pixel Agent 默认配置统一（完成）
 | 默认 Pixel Profile 导致既有通用 OpenAI Images 测试误走精简契约 | 1 | 测试显式使用非 Pixel URL，并保留 Pixel 专属契约测试 |
 | Chrome smoke 首次使用模糊 label 匹配到多个控件 | 1 | 改用 `textbox` role 精确定位 API Key 输入框 |
 | 当前机器 Docker daemon 不可用 | 1 | 执行 Dockerfile/脚本静态审计与 shell 语法检查，未构建镜像 |
+| zsh 将 GitHub API URL 的 `?ref=main` 解析为通配符 | 1 | 为包含查询参数的 URL 加单引号后继续检查 |
 
 ## Notes
 

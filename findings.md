@@ -1,5 +1,13 @@
 # Findings & Decisions
 
+## 灵感库本地化（2026-08-25）
+
+- 用户确认不需要服务启动后的定时同步，改为仓库内提供手动拉取脚本。
+- 当前前端直接读取 GitHub Raw 的 `data/cases.json` 和 `data/images/case*`，用户网络和 GitHub 可用性会直接影响灵感库。
+- 本地化目标目录采用 Vite 原样复制的 `public/prompt-library`；开发、静态构建和 Nginx 部署均可通过 `/prompt-library/...` 同源访问。
+- 上游快照约 529 条清单、532 张图片、总计约 154 MB；会显著增大 Git 仓库，但已知单文件不超过 GitHub 100 MB 上限。
+- 同步脚本只复制清单、532 张 `case*` 案例图片和来源/许可说明，不保留上游 `.git`，并清理已从上游删除的旧图片；上游图片目录中的 27 个赞助商、站点预览和分类封面不纳入快照。
+
 ## Requirements
 
 - 使用已拉下来的 `gpt_image_playground` 作为功能骨架。

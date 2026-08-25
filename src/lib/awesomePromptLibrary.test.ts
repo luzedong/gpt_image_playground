@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  AWESOME_PROMPT_LIBRARY_BASE,
   AWESOME_PROMPT_MANIFEST_URL,
   filterAwesomePromptCases,
   fetchAwesomePromptManifest,
@@ -45,9 +46,10 @@ describe('awesomePromptLibrary', () => {
     expect(normalized.cases[0]?.imageAlt).toBe('城市仪表盘')
   })
 
-  it('maps repository image paths to raw case assets', () => {
-    expect(getAwesomePromptImageUrl({ id: 8, image: '/images/case8.jpg' })).toBe('https://raw.githubusercontent.com/freestylefly/awesome-gpt-image-2/main/data/images/case8.jpg')
-    expect(getAwesomePromptImageUrl({ id: 8, image: '/unknown/image.svg' })).toContain('/data/images/case8.jpg')
+  it('maps repository image paths to same-origin case assets', () => {
+    expect(getAwesomePromptImageUrl({ id: 8, image: '/images/case8.jpg' })).toBe(`${AWESOME_PROMPT_LIBRARY_BASE}/images/case8.jpg`)
+    expect(getAwesomePromptImageUrl({ id: 8, image: '/unknown/image.svg' })).toBe(`${AWESOME_PROMPT_LIBRARY_BASE}/images/case8.jpg`)
+    expect(getAwesomePromptImageUrl({ id: 8, image: '/images/case8.jpg' })).not.toContain('githubusercontent.com')
   })
 
   it('filters by category and searchable prompt text', () => {

@@ -141,7 +141,7 @@
 ## ✨ 核心特性
 
 ### 🎨 强大的图像生成与编辑
-- **Prompt 灵感素材库**：画廊输入栏中的「灵感」面板按需读取 [awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) 的公开案例，可搜索和分类筛选，一键填入或复制完整 Prompt，并可选择单张案例图导入为参考图。远程图片使用懒加载，不会打入应用首屏包；案例内容来自公开社区，商业使用前请核对原始来源与[上游免责声明](https://github.com/freestylefly/awesome-gpt-image-2/blob/main/docs/disclaimer.md)。
+- **Prompt 灵感素材库**：画廊输入栏中的「灵感」面板读取仓库内置的 [awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) 案例快照，可搜索和分类筛选，一键填入或复制完整 Prompt，并可选择单张案例图导入为参考图。浏览器只请求本站同源清单与图片，不依赖访问 GitHub Raw；案例内容来自公开社区，商业使用前请核对原始来源与上游免责声明。
 - **参考图与遮罩**：支持上传最多 16 张参考图（支持剪贴板和拖拽）。内置可视化遮罩编辑器，自动预处理以符合官方分辨率限制。
 - **批量与迭代**：支持单次多图生成；一键将满意结果转为参考图，无缝开启下一轮修改。
 - **流式生成预览**：`Images API` 与 `Responses API` 模式均支持流式接收中间步骤图像，缓解连接超时问题。
@@ -182,6 +182,16 @@
 ## 🚀 部署与使用
 
 支持多种部署与开发方式。
+
+### 更新 Prompt 灵感素材
+
+灵感库清单和案例图保存在 `public/prompt-library`，浏览器只从当前网站加载。需要更新上游素材时，在项目根目录手动执行：
+
+```bash
+npm run sync:prompt-library
+```
+
+脚本会浅克隆 [awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2)，校验案例与图片，记录上游 commit 到 `source.json`，然后原子替换本地快照。它不会创建定时任务；同步完成后请审查变更并提交到 Git。可通过 `PROMPT_LIBRARY_REPO_URL` 和 `PROMPT_LIBRARY_REF` 覆盖上游仓库与分支。
 
 ### Pixel API 配置
 

@@ -1,7 +1,7 @@
 export const AWESOME_PROMPT_REPOSITORY = 'https://github.com/freestylefly/awesome-gpt-image-2'
-export const AWESOME_PROMPT_RAW_BASE = 'https://raw.githubusercontent.com/freestylefly/awesome-gpt-image-2/main'
-export const AWESOME_PROMPT_MANIFEST_URL = `${AWESOME_PROMPT_RAW_BASE}/data/cases.json`
-export const AWESOME_PROMPT_DISCLAIMER_URL = `${AWESOME_PROMPT_REPOSITORY}/blob/main/docs/disclaimer.md`
+export const AWESOME_PROMPT_LIBRARY_BASE = `${import.meta.env.BASE_URL}prompt-library`.replace(/\/$/, '')
+export const AWESOME_PROMPT_MANIFEST_URL = `${AWESOME_PROMPT_LIBRARY_BASE}/cases.json`
+export const AWESOME_PROMPT_DISCLAIMER_URL = `${AWESOME_PROMPT_LIBRARY_BASE}/disclaimer.md`
 
 export interface AwesomePromptCase {
   id: number
@@ -103,8 +103,8 @@ export function normalizeAwesomePromptManifest(value: unknown): AwesomePromptMan
 export function getAwesomePromptImageUrl(item: Pick<AwesomePromptCase, 'id' | 'image'>) {
   const path = item.image.replace(/^\/+/, '')
   const fileName = path.split('/').pop() || `case${item.id}.jpg`
-  if (!/^case\d+\.(?:jpe?g|png|webp)$/i.test(fileName)) return `${AWESOME_PROMPT_RAW_BASE}/data/images/case${item.id}.jpg`
-  return `${AWESOME_PROMPT_RAW_BASE}/data/images/${fileName}`
+  if (!/^case\d+\.(?:jpe?g|png|webp)$/i.test(fileName)) return `${AWESOME_PROMPT_LIBRARY_BASE}/images/case${item.id}.jpg`
+  return `${AWESOME_PROMPT_LIBRARY_BASE}/images/${fileName}`
 }
 
 export function filterAwesomePromptCases(cases: AwesomePromptCase[], query: string, category = 'all') {

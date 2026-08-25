@@ -1,5 +1,19 @@
 # Progress Log
 
+## Session: 2026-08-25
+
+### Phase 13: 灵感库本地化与手动同步
+
+- **Status:** complete
+- 用户取消服务启动同步和定时任务，要求新增手动脚本，先拉取完整素材，再提交并推送到 GitHub。
+- 已确认当前工作树干净，`main` 与 `origin/main` 同步；现有灵感库清单和图片均直接请求 GitHub Raw。
+- 目标：素材存放到 `public/prompt-library`，前端只请求同源路径，部署继续保持纯静态 Nginx 架构。
+- 首次查询 GitHub Contents API 时，zsh 将未加引号的 `?ref=main` 当作通配符；已改为引用完整 URL。
+- 首次真实同步成功：校验 529 个案例、532 张案例图，原始目录约 156 MB。
+- 发现上游 `data/images` 还包含 27 个非案例站点素材（约 7.2 MB）；同步脚本已收紧为只复制 `case*.jpg|jpeg|png|webp`。
+- 生产构建后的同源 smoke 通过：清单 529 条、图片 532 张均从 `/prompt-library/...` 返回 200；不再引用 GitHub Raw。
+- 全量验证通过：34 个测试文件、536 项测试；生产构建、shell 语法和 `git diff --check` 均通过。
+
 ## Session: 2026-08-24
 
 ### Phase 12: Pixel Agent 默认配置统一
