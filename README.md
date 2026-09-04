@@ -336,12 +336,27 @@ npm run deploy:cf
 
 | 变量 | 说明 |
 |------|------|
-| `DEFAULT_API_KEY` | 默认 Pixel API Key；只需填写此变量即可使用内置 Pixel 地址和模型。Key 会注入前端资源，请使用低权限/可轮换 Key |
+| `DEFAULT_API_KEY` | 兼容旧版/非固定模式的默认 API Key；服务端固定模式请使用服务端配置文件，不会注入前端 |
 | `DEFAULT_API_URL` | 高级覆盖预置配置；留空时使用应用内置的 `https://ai-pixel.online/v1`。也支持 JSON 文件或导入链接，详见 [预置配置说明](#preset-config) |
 | `ENABLE_API_PROXY=true` | 开启 Nginx 同源代理，请求发往 `/api-proxy/{路径}` 再转发到 `API_PROXY_URL` |
-| `API_PROXY_URL` | 代理转发的完整 API 基础地址（不自动补 `/v1`） |
+| `API_PROXY_URL` | 非固定模式的代理转发目标；固定模式由 `CHAT_API_URL`、`IMAGE_1K_API_URL`、`IMAGE_4K_API_URL` 分别决定 |
+| `API_CONFIG_FILE` | 服务端配置文件路径，默认 `/etc/gpt-image-playground/api-config.env` |
+| `API_KEY` | 服务端固定模式的统一 Key 兜底值，不会下发到浏览器 |
+| `CHAT_API_KEY` / `IMAGE_1K_API_KEY` / `IMAGE_4K_API_KEY` | 服务端固定模式的分路 Key；未填写时使用 `API_KEY` |
 | `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
 | `HOST` / `PORT` | Nginx 监听地址和端口，默认 `0.0.0.0:80` |
+
+默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，1K 图像使用 `https://ai-pixel.online/v1` 的 `gpt-image-2`，大于 1K 的 2K/4K 图像使用 `https://direct.linkai.pics/v1` 的 `gpt-image-2`。浏览器只访问同源代理，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
+
+推荐把密钥和三个上游地址写入服务器文件 `deploy/api-config.env.example` 对应的配置文件，再只读挂载到容器：
+
+```bash
+docker run -d -p 8080:80 \
+  -v /etc/gpt-image-playground/api-config.env:/etc/gpt-image-playground/api-config.env:ro \
+  ghcr.io/cooksleep/gpt_image_playground:latest
+```
+
+若只使用一个 Key，在配置文件中填写 `API_KEY` 即可；也可以分别填写 `CHAT_API_KEY`、`IMAGE_1K_API_KEY` 和 `IMAGE_4K_API_KEY`。如需关闭服务端固定模式，可设置 `SERVER_MANAGED_API_CONFIG=false`，恢复旧的客户端 API 配置行为。
 
 > 开启 API 代理后，任何人都能将你的服务器作为代理来请求目标 API。建议仅在有访问控制（如 IP 白名单）或本地网络中开启。
 

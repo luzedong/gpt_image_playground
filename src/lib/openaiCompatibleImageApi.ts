@@ -1,6 +1,6 @@
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefinition, type CustomProviderPollMapping, type CustomProviderResultMapping, type CustomProviderSubmitMapping, type ImageApiResponse, type ImageResponseItem, type ResponsesApiResponse, type ResponsesOutputItem, type TaskParams } from '../types'
 import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
-import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
+import { buildApiUrl, getImageApiProxyRoute, isServerManagedApiConfigEnabled, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
 import {
   assertImageInputPayloadSize,
   assertMaskEditFileSize,
@@ -93,9 +93,7 @@ function normalizeImageApiPayload(value: unknown): ImageApiResponse {
 }
 
 function createRequestHeaders(profile: ApiProfile): Record<string, string> {
-  return {
-    Authorization: `Bearer ${profile.apiKey}`,
-  }
+  return profile.apiKey.trim() ? { Authorization: `Bearer ${profile.apiKey}` } : {}
 }
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
@@ -491,7 +489,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
   const prompt = profile.codexCli && !opts.settings.allowPromptRewrite
     ? `${PROMPT_REWRITE_GUARD_PREFIX}\n${sizePrompt}`
     : sizePrompt
-  const isPixelApi = isPixelApiBaseUrl(profile.baseUrl)
+  const isPixelApi = isPixelApiBaseUrl(profile.baseUrl) || (isServerManagedApiConfigEnabled() && profile.provider === 'openai')
   const requestImageDataUrls = isPixelApi ? inputImageDataUrls.slice(0, 1) : inputImageDataUrls
   const isEdit = requestImageDataUrls.length > 0
   const mime = isPixelApi ? 'image/png' : MIME_MAP[params.output_format] || 'image/png'
@@ -567,7 +565,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
         formData.append('mask', maskBlob, 'mask.png')
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy), {
+      response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy, getImageApiProxyRoute(params.size)), {
         method: 'POST',
         headers: requestHeaders,
         cache: 'no-store',
@@ -610,7 +608,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
         body.partial_images = getStreamPartialImages(profile)
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
+      response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy, getImageApiProxyRoute(params.size)), {
         method: 'POST',
         headers: {
           ...requestHeaders,
@@ -1048,7 +1046,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       body.stream = true
     }
 
-    const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy), {
+    const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy, getImageApiProxyRoute(params.size)), {
       method: 'POST',
       headers: {
         ...requestHeaders,

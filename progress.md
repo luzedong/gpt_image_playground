@@ -1,5 +1,17 @@
 # Progress Log
 
+## Session: 2026-09-04
+
+### Phase 14: 服务端固定模型与按分辨率路由
+
+- 用户要求：聊天固定使用 `https://ai-pixel.online` 的 `gpt-5.6-luna`；1K 生图固定使用 `https://ai-pixel.online` 的 `gpt-image-2`；4K 生图固定使用 `https://direct.linkai.pics` 的 `gpt-image-2`；配置放服务端，客户端不再要求用户输入。
+- 当前阶段先梳理 API Profile、请求构建、尺寸参数和 Docker/静态部署链路，再决定兼容实现边界。
+- 已完成服务端固定模式、三路同源 Nginx 代理、按像素路由、客户端固定 Profile 和服务端配置文件示例；正在做最终产物与部署脚本审计。
+- 非阻塞错误：一次产物扫描命令因 zsh 引号不完整失败，改用不含反引号的匹配命令重试。
+- 最终完成：Docker 默认启用固定模式；配置文件只读挂载到 `/etc/gpt-image-playground/api-config.env`；聊天/标题走 chat 路由，1K 图像走 image-1k，2K/4K 图像走 image-4k。
+- 设置页固定 API URL、API 类型、模型 ID 和 Key；关闭启动 Key 弹窗；客户端不带 Authorization，Nginx 按路由注入服务端 Key。
+- 验证通过：35 个测试文件、540 项测试；`npm run build`；两个部署脚本 `sh -n`；`git diff --check`；带示例值的 Nginx `envsubst` 路由审计。
+
 ## Session: 2026-08-25
 
 ### Phase 13: 灵感库本地化与手动同步

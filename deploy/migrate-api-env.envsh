@@ -1,6 +1,10 @@
 #!/bin/sh
 
 # 兼容旧版本 Docker 环境变量：API_URL 同时作为两个新变量的兜底值。
+if [ -n "${API_CONFIG_FILE:-}" ] && [ -f "$API_CONFIG_FILE" ]; then
+    . "$API_CONFIG_FILE"
+fi
+
 DOCKER_LEGACY_API_URL_USED=false
 if [ -n "$API_URL" ]; then
     DOCKER_LEGACY_API_URL_USED=true
@@ -11,6 +15,28 @@ if [ "${DEFAULT_API_URL+x}" != "x" ]; then
 fi
 API_PROXY_URL=${API_PROXY_URL:-${API_URL:-https://ai-pixel.online/v1}}
 
+if [ "${SERVER_MANAGED_API_CONFIG:-false}" = "true" ]; then
+    ENABLE_API_PROXY=true
+    LOCK_API_PROXY=true
+    SHOW_PRESET_CONFIG_ONLY=true
+    LOCK_PRESET_CONFIG_PARAMS=true
+    PREVENT_PRESET_CONFIG_DELETION=true
+fi
+
+CHAT_API_URL=${CHAT_API_URL:-https://ai-pixel.online/v1}
+IMAGE_1K_API_URL=${IMAGE_1K_API_URL:-https://ai-pixel.online/v1}
+IMAGE_4K_API_URL=${IMAGE_4K_API_URL:-https://direct.linkai.pics/v1}
+CHAT_API_KEY=${CHAT_API_KEY:-${API_KEY:-}}
+IMAGE_1K_API_KEY=${IMAGE_1K_API_KEY:-${API_KEY:-}}
+IMAGE_4K_API_KEY=${IMAGE_4K_API_KEY:-${API_KEY:-}}
+
 export DEFAULT_API_URL
 export API_PROXY_URL
 export DOCKER_LEGACY_API_URL_USED
+export ENABLE_API_PROXY
+export LOCK_API_PROXY
+export SHOW_PRESET_CONFIG_ONLY
+export LOCK_PRESET_CONFIG_PARAMS
+export PREVENT_PRESET_CONFIG_DELETION
+export CHAT_API_URL IMAGE_1K_API_URL IMAGE_4K_API_URL
+export CHAT_API_KEY IMAGE_1K_API_KEY IMAGE_4K_API_KEY

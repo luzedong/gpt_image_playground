@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getActiveApiProfile } from '../lib/apiProfiles'
+import { isServerManagedApiConfigEnabled } from '../lib/devProxy'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { useStore } from '../store'
@@ -14,7 +15,7 @@ export default function ApiKeyPromptModal({ appReady }: ApiKeyPromptModalProps) 
   const setSettings = useStore((state) => state.setSettings)
   const showToast = useStore((state) => state.showToast)
   const activeProfile = getActiveApiProfile(settings)
-  const needsApiKey = appReady && !activeProfile.apiKey.trim()
+  const needsApiKey = appReady && !isServerManagedApiConfigEnabled() && !activeProfile.apiKey.trim()
   const [dismissed, setDismissed] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)

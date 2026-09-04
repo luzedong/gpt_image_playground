@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { buildApiUrl, normalizeBaseUrl } from './devProxy'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildApiUrl, getImageApiProxyRoute, normalizeBaseUrl } from './devProxy'
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('normalizeBaseUrl', () => {
   it('preserves a trailing slash used for direct endpoint joining', () => {
@@ -44,6 +48,12 @@ describe('buildApiUrl', () => {
     ).toBe('/openai-proxy/responses')
   })
 
+  it('adds a fixed server proxy route when requested', () => {
+    expect(buildApiUrl('https://api.example.com/v1', 'images/generations', null, true, 'image-4k')).toBe(
+      '/api-proxy/image-4k/images/generations',
+    )
+  })
+
   it('uses the configured API URL directly when API proxy is disabled', () => {
     expect(buildApiUrl('http://api.example.com/v1', 'responses', null, false)).toBe(
       'http://api.example.com/v1/responses',
@@ -72,5 +82,21 @@ describe('buildApiUrl', () => {
     expect(buildApiUrl('https://api.example.com/', 'responses', null, false)).toBe(
       'https://api.example.com/responses',
     )
+  })
+})
+
+describe('getImageApiProxyRoute', () => {
+  it('uses the 1K route for auto and 1K-sized images', () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+
+    expect(getImageApiProxyRoute('auto')).toBe('image-1k')
+    expect(getImageApiProxyRoute('1024x1536')).toBe('image-1k')
+  })
+
+  it('uses the 4K route for sizes above the 1K pixel budget', () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+
+    expect(getImageApiProxyRoute('2048x2048')).toBe('image-4k')
+    expect(getImageApiProxyRoute('3840x2160')).toBe('image-4k')
   })
 })

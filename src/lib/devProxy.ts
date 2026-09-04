@@ -9,6 +9,9 @@ export interface DevProxyConfig {
 }
 
 const DEFAULT_PROXY_PREFIX = '/api-proxy'
+const MAX_1K_PIXELS = 1_572_864
+
+export type ApiProxyRoute = 'default' | 'chat' | 'image-1k' | 'image-4k'
 
 export function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim()
@@ -61,12 +64,14 @@ export function buildApiUrl(
   path: string,
   proxyConfig?: DevProxyConfig | null,
   useApiProxy = false,
+  proxyRoute: ApiProxyRoute = 'default',
 ): string {
   const trimmedBaseUrl = baseUrl.trim()
   const endpointPath = path.replace(/^\/+/, '')
 
   if (useApiProxy) {
-    return `${proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX}/${endpointPath}`
+    const routePath = proxyRoute === 'default' ? endpointPath : `${proxyRoute}/${endpointPath}`
+    return `${proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX}/${routePath}`
   }
 
   const normalizedBaseUrl = normalizeBaseUrl(trimmedBaseUrl)
@@ -95,6 +100,17 @@ export function readClientDevProxyConfig(): DevProxyConfig | null {
 
 export function isApiProxyAvailable(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
   return readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true' || Boolean(proxyConfig?.enabled)
+}
+
+export function isServerManagedApiConfigEnabled(): boolean {
+  return readRuntimeEnv(import.meta.env.VITE_SERVER_MANAGED_API_CONFIG) === 'true'
+}
+
+export function getImageApiProxyRoute(size: string): ApiProxyRoute {
+  if (!isServerManagedApiConfigEnabled()) return 'default'
+  const match = size.match(/^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/)
+  if (!match) return 'image-1k'
+  return Number(match[1]) * Number(match[2]) > MAX_1K_PIXELS ? 'image-4k' : 'image-1k'
 }
 
 export function isApiProxyLocked(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
