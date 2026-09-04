@@ -1,5 +1,12 @@
 # Findings & Decisions
 
+## 服务端锁定配置下的流式开关（2026-09-04）
+
+- 根因一：`SettingsModal` 对 `activeProfileLocked` 直接设置流式开关和中间图像数控件为 disabled。
+- 根因二：即使绕过 UI，`updateActiveProfile`/`commitActiveProfilePatch` 以及 `enforcePresetConfigPolicy` 仍会拒绝或覆盖锁定 Profile 的流式字段。
+- 修复边界：服务端继续锁定 URL、模型、API 类型、代理和其他部署参数；仅 OpenAI Profile 的 `streamImages`、`streamPartialImages` 作为本地体验偏好允许修改。
+- 默认值暂不改为开启：当前图像请求对 Pixel Images API 不发送流式字段，避免升级后把不支持 SSE 的图像网关误切到流式；Agent Responses Profile 本来已默认开启流式。
+
 ## 服务端固定模型与按分辨率路由（2026-09-04）
 
 - 待确认：当前项目是 React/Vite 静态前端，需检查 Docker/Nginx 是否已有同源动态配置或代理入口；仅用 Vite 环境变量会把 API Key 编译进客户端，不是真正的服务端密钥托管。

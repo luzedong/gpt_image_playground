@@ -105,6 +105,9 @@ export function enforcePresetConfigPolicy(
     return {
       ...(paramsLocked ? preset : profile),
       apiKey: profile.apiKey,
+      // 流式选项属于用户体验偏好，服务端锁定凭据时仍允许本地调整。
+      streamImages: preset.provider === 'openai' ? profile.streamImages ?? preset.streamImages : preset.streamImages,
+      streamPartialImages: preset.provider === 'openai' ? profile.streamPartialImages ?? preset.streamPartialImages : preset.streamPartialImages,
       provider: paramsLocked || presetConfigOnly ? preset.provider : profile.provider,
       isDefault: profile.id === defaultPresetProfileId ? true : undefined,
     }

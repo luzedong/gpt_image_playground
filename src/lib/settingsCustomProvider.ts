@@ -117,7 +117,7 @@ multipart files 示例：
 - apiProxy：可选。仅同步自定义服务商可以设为 true，用于配合部署端 API 代理隐藏真实上游地址；包含 taskIdPath 或 poll 的异步任务配置不要开启，应用不支持异步自定义服务商走代理。
 - isDefault：仅 profiles 包含多个配置时，为默认预置配置填写 true，其他配置省略；只能有一个配置为 true。只有一个配置时不要填写。默认项用于首次导入及重新部署后自动选择，不影响用户拖动后的列表顺序。
 
-部署开关边界：LOCK_PRESET_CONFIG_PARAMS 锁定预置 profile 除 API Key 外的参数，禁止编辑预置 provider Manifest；provider 被当前锁定预置 profile 引用时不可删除，解除引用后可删除。PREVENT_PRESET_CONFIG_DELETION 禁止删除预置 profile 和 provider；SHOW_PRESET_CONFIG_ONLY 只允许使用当前部署的预置 profile，并禁止创建、复制、删除、拖动、切换 provider 和管理自定义 provider。API Key 始终可编辑。
+部署开关边界：LOCK_PRESET_CONFIG_PARAMS 锁定预置 profile 除 API Key 和 OpenAI 流式选项外的参数，禁止编辑预置 provider Manifest；provider 被当前锁定预置 profile 引用时不可删除，解除引用后可删除。PREVENT_PRESET_CONFIG_DELETION 禁止删除预置 profile 和 provider；SHOW_PRESET_CONFIG_ONLY 只允许使用当前部署的预置 profile，并禁止创建、复制、删除、拖动、切换 provider 和管理自定义 provider。API Key 和 OpenAI 流式选项始终可编辑。
 
 profiles 中不要包含 apiKey（用户导入后自行填写）。
 

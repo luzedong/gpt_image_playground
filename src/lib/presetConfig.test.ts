@@ -83,6 +83,31 @@ describe('preset config policy', () => {
     expect(policy.isPresetProviderDeletionPrevented('user-provider', enforced.profiles)).toBe(false)
   })
 
+  it('preserves OpenAI streaming preferences while locking preset parameters', async () => {
+    vi.stubEnv('VITE_LOCK_PRESET_CONFIG_PARAMS', 'true')
+    const { createDefaultOpenAIProfile, normalizeSettings } = await import('./apiProfiles')
+    const policy = await import('./presetConfig')
+    const preset = createDefaultOpenAIProfile({
+      id: 'preset-openai',
+      streamImages: false,
+      streamPartialImages: 1,
+      isDefault: true,
+    })
+    policy.setPresetConfig({ customProviders: [], profiles: [preset] })
+
+    const enforced = policy.enforcePresetConfigPolicy(normalizeSettings({
+      profiles: [{ ...preset, streamImages: true, streamPartialImages: 3 }],
+      activeProfileId: preset.id,
+    }))
+
+    expect(enforced.profiles[0]).toMatchObject({
+      baseUrl: preset.baseUrl,
+      model: preset.model,
+      streamImages: true,
+      streamPartialImages: 3,
+    })
+  })
+
   it('allows removed presets to stay deleted by default', async () => {
     const { createDefaultFalProfile, createDefaultOpenAIProfile, normalizeSettings } = await import('./apiProfiles')
     const policy = await import('./presetConfig')

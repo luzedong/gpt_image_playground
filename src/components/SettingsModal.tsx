@@ -530,15 +530,22 @@ export default function SettingsModal() {
       profiles: draft.profiles.map((profile) => profile.id === activeProfile.id ? { ...profile, ...patch } : profile),
     })
 
+  const canEditActiveProfilePatch = (patch: Partial<ApiProfile>) => {
+    if (!activeProfileLocked) return true
+    if (activeProfile.provider !== 'openai') return false
+    const keys = Object.keys(patch)
+    return keys.length > 0 && keys.every((key) => key === 'streamImages' || key === 'streamPartialImages')
+  }
+
   const updateActiveProfile = (patch: Partial<ApiProfile>, commit = false) => {
-    if (activeProfileLocked && (Object.keys(patch).length !== 1 || patch.apiKey === undefined)) return
+    if (!canEditActiveProfilePatch(patch) && !(activeProfileLocked && Object.keys(patch).length === 1 && patch.apiKey !== undefined)) return
     const nextDraft = getDraftWithActiveProfilePatch(patch)
     setDraft(nextDraft)
     if (commit) commitSettings(nextDraft)
   }
 
   const commitActiveProfilePatch = (patch: Partial<ApiProfile>) => {
-    if (activeProfileLocked && (Object.keys(patch).length !== 1 || patch.apiKey === undefined)) return
+    if (!canEditActiveProfilePatch(patch) && !(activeProfileLocked && Object.keys(patch).length === 1 && patch.apiKey !== undefined)) return
     const nextDraft = getDraftWithActiveProfilePatch(patch)
     commitSettings(nextDraft)
   }
@@ -1696,7 +1703,6 @@ export default function SettingsModal() {
                       <button
                         type="button"
                         onClick={() => updateActiveProfile({ streamImages: !activeProfile.streamImages }, true)}
-                        disabled={activeProfileLocked}
                         className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${activeProfile.streamImages ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
                         role="switch"
                         aria-checked={!!activeProfile.streamImages}
@@ -1716,7 +1722,7 @@ export default function SettingsModal() {
                         <Select
                           value={normalizeStreamPartialImages(activeProfile.streamPartialImages)}
                           onChange={(value) => updateActiveProfile({ streamPartialImages: normalizeStreamPartialImages(value) }, true)}
-                          disabled={!activeProfile.streamImages || activeProfileLocked}
+                          disabled={!activeProfile.streamImages}
                           options={[
                             { label: '0，不请求', value: 0 },
                             { label: '1 张', value: 1 },
