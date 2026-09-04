@@ -5,7 +5,7 @@ describe('server-managed API configuration', () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
     vi.resetModules()
 
-    const { DEFAULT_AGENT_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, normalizeSettings } = await import('./apiProfiles')
+    const { DEFAULT_AGENT_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, normalizeSettings, validateApiProfile } = await import('./apiProfiles')
     const settings = normalizeSettings({
       profiles: [{
         id: 'client-profile',
@@ -38,5 +38,6 @@ describe('server-managed API configuration', () => {
     })
     expect(settings.profiles[0]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-image-2', apiProxy: true })
     expect(settings.profiles[1]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-5.6-luna', apiProxy: true })
+    expect(validateApiProfile(settings.profiles[1])).toBeNull()
   })
 })

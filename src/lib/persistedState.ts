@@ -129,6 +129,7 @@ export function migratePersistedState(persistedState: unknown, version?: number)
     ...persistedState,
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
   }
+  if ((version ?? 0) < 4) migrated.appMode = 'agent'
   if ((version ?? 0) >= 3 || !isRecord(migrated.settings)) return migrated
 
   const settings = migrated.settings

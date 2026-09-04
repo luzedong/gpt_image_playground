@@ -15,24 +15,23 @@ import type {
 } from '../types'
 import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES, DEFAULT_ZIP_DOWNLOAD_ROUTES, ZIP_DOWNLOAD_ROUTE_VALUES } from '../types'
 import { customProviderSupportsNativeTransparentBackground } from './customProviderCapabilities'
-import { shouldUseApiProxy } from './devProxy'
+import { isServerManagedApiConfigEnabled, shouldUseApiProxy } from './devProxy'
 import { normalizeReasoningEffort, normalizeStreamPartialImages, parseDefaultApiUrl } from './defaultApiUrl'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './importableConfigUrl'
 
-const SERVER_MANAGED_API_CONFIG = import.meta.env.VITE_SERVER_MANAGED_API_CONFIG === 'true'
-export const DEFAULT_PIXEL_BASE_URL = SERVER_MANAGED_API_CONFIG ? '' : 'https://ai-pixel.online/v1'
+export const DEFAULT_PIXEL_BASE_URL = isServerManagedApiConfigEnabled() ? '' : 'https://ai-pixel.online/v1'
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
 const RAW_DEFAULT_API_KEY = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_KEY)
-const DEFAULT_OPENAI_API_PROXY = SERVER_MANAGED_API_CONFIG || readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
+const DEFAULT_OPENAI_API_PROXY = isServerManagedApiConfigEnabled() || readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
 const DOCKER_DEPLOYMENT = readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT) === 'true'
-const DEFAULT_API_URL_PATCH = SERVER_MANAGED_API_CONFIG
+const DEFAULT_API_URL_PATCH = isServerManagedApiConfigEnabled()
   ? null
   : isImportableConfigUrl(RAW_DEFAULT_API_URL)
   ? null
   : parseDefaultApiUrl(RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : DEFAULT_PIXEL_BASE_URL))
-const DEFAULT_BASE_URL = SERVER_MANAGED_API_CONFIG ? '' : DEFAULT_API_URL_PATCH?.baseUrl ?? ''
-const DEFAULT_API_KEY = SERVER_MANAGED_API_CONFIG ? '' : DEFAULT_API_URL_PATCH?.apiKey ?? RAW_DEFAULT_API_KEY
+const DEFAULT_BASE_URL = isServerManagedApiConfigEnabled() ? '' : DEFAULT_API_URL_PATCH?.baseUrl ?? ''
+const DEFAULT_API_KEY = isServerManagedApiConfigEnabled() ? '' : DEFAULT_API_URL_PATCH?.apiKey ?? RAW_DEFAULT_API_KEY
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-luna'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
@@ -118,7 +117,7 @@ export function normalizeAgentMaxToolRounds(value: unknown, fallback: number | u
 }
 
 export function hasDefaultPresetConfig(): boolean {
-  return SERVER_MANAGED_API_CONFIG || Boolean(RAW_DEFAULT_API_URL || RAW_DEFAULT_API_KEY) || DEFAULT_OPENAI_API_PROXY
+  return isServerManagedApiConfigEnabled() || Boolean(RAW_DEFAULT_API_URL || RAW_DEFAULT_API_KEY) || DEFAULT_OPENAI_API_PROXY
 }
 
 export function getDefaultApiProfileId(settings: Partial<AppSettings> | unknown): string | null {
@@ -701,7 +700,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
       })
     : [legacyProfile]
 
-  if (SERVER_MANAGED_API_CONFIG) {
+  if (isServerManagedApiConfigEnabled()) {
     normalizedProfiles = createDefaultPixelProfiles()
   }
 
@@ -743,18 +742,18 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     : profiles[0].id
   const active = profiles.find((p) => p.id === activeProfileId) ?? profiles[0]
   const hasPixelAgentPair = profiles.some((profile) => isAgentTextApiProfile(profile)) && Boolean(profiles.find(isBuiltInPixelImageProfile))
-  const agentApiConfigMode = SERVER_MANAGED_API_CONFIG
+  const agentApiConfigMode = isServerManagedApiConfigEnabled()
     ? 'hybrid'
     : record.agentApiConfigMode === undefined && hasPixelAgentPair
     ? 'hybrid'
     : normalizeAgentApiConfigMode(record.agentApiConfigMode)
   const firstAgentTextProfile = profiles.find(isAgentTextApiProfile)
-  const agentTextProfileId = SERVER_MANAGED_API_CONFIG
+  const agentTextProfileId = isServerManagedApiConfigEnabled()
     ? DEFAULT_AGENT_PROFILE_ID
     : typeof record.agentTextProfileId === 'string' && profiles.some((p) => p.id === record.agentTextProfileId && isAgentTextApiProfile(p))
     ? record.agentTextProfileId
     : (isAgentTextApiProfile(active) ? active.id : firstAgentTextProfile?.id ?? null)
-  const agentImageProfileId = SERVER_MANAGED_API_CONFIG
+  const agentImageProfileId = isServerManagedApiConfigEnabled()
     ? DEFAULT_OPENAI_PROFILE_ID
     : typeof record.agentImageProfileId === 'string' && profiles.some((p) => p.id === record.agentImageProfileId)
     ? record.agentImageProfileId
@@ -770,7 +769,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     apiProxy: active.apiProxy,
     streamImages: active.streamImages,
     streamPartialImages: active.streamPartialImages,
-    customProviders: SERVER_MANAGED_API_CONFIG ? [] : customProviders,
+    customProviders: isServerManagedApiConfigEnabled() ? [] : customProviders,
     providerOrder: normalizeProviderOrder(record.providerOrder, customProviders),
     clearInputAfterSubmit: typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : false,
     persistInputOnRestart: typeof record.persistInputOnRestart === 'boolean' ? record.persistInputOnRestart : true,
@@ -788,7 +787,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     agentTextProfileId,
     agentImageProfileId,
     profiles,
-    activeProfileId: SERVER_MANAGED_API_CONFIG ? DEFAULT_OPENAI_PROFILE_ID : activeProfileId,
+    activeProfileId: isServerManagedApiConfigEnabled() ? DEFAULT_OPENAI_PROFILE_ID : activeProfileId,
   }
 }
 
@@ -902,7 +901,7 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
   const record = settings && typeof settings === 'object' ? settings as Record<string, unknown> : {}
   const normalized = normalizeSettings(settings)
   const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultOpenAIProfile()
-  if (SERVER_MANAGED_API_CONFIG) return profile
+  if (isServerManagedApiConfigEnabled()) return profile
   const apiMode = profile.provider === 'openai' && (record.apiMode === 'images' || record.apiMode === 'responses')
     ? record.apiMode
     : profile.apiMode
@@ -924,7 +923,7 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
 export function validateApiProfile(profile: ApiProfile): string | null {
   if (!profile.name.trim()) return '缺少名称'
   if (profile.provider !== 'fal' && !profile.baseUrl.trim() && !shouldUseApiProxy(profile.apiProxy)) return '缺少 API URL'
-  if (!profile.apiKey.trim() && !(SERVER_MANAGED_API_CONFIG && profile.apiProxy)) return '缺少 API Key'
+  if (!profile.apiKey.trim() && !(isServerManagedApiConfigEnabled() && profile.apiProxy)) return '缺少 API Key'
   if (!profile.model.trim()) return '缺少模型 ID'
   return null
 }

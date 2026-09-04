@@ -99,7 +99,7 @@ export function readClientDevProxyConfig(): DevProxyConfig | null {
 }
 
 export function isApiProxyAvailable(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
-  return readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true' || Boolean(proxyConfig?.enabled)
+  return isServerManagedApiConfigEnabled() || readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true' || Boolean(proxyConfig?.enabled)
 }
 
 export function isServerManagedApiConfigEnabled(): boolean {

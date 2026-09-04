@@ -112,6 +112,12 @@ describe('persisted state codec', () => {
     expect(migratePersistedState('invalid', 1)).toBe('invalid')
   })
 
+  it('opens the Agent workspace after the homepage default migration', () => {
+    const migrated = migratePersistedState({ appMode: 'gallery' }, 3) as { appMode: string }
+
+    expect(migrated.appMode).toBe('agent')
+  })
+
   it('migrates the old Pixel image-only defaults to a shared-key Agent configuration', () => {
     const migrated = migratePersistedState({
       settings: {
