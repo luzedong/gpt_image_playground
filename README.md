@@ -195,7 +195,7 @@ npm run sync:prompt-library
 
 ### Pixel API 配置
 
-当前应用已内置 Pixel API 地址 `https://api.ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2` 生图模型，以及默认的 `Responses API` Agent 文本模型 `gpt-5.6-luna`。两套配置自动共用同一个 Pixel API Key；首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
+当前应用已内置 Pixel API 地址 `https://ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2` 生图模型，以及默认的 `Responses API` Agent 文本模型 `gpt-5.6-luna`。两套配置自动共用同一个 Pixel API Key；首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
 
 - API Key 填写 Pixel 控制台创建的 Bearer Token。
 - `VITE_DEFAULT_API_KEY`（Vercel、GitHub Actions、本地构建）或 `DEFAULT_API_KEY`（Docker）可作为部署时的默认 Key；不填写则由用户在页面中输入。
@@ -337,7 +337,7 @@ npm run deploy:cf
 | 变量 | 说明 |
 |------|------|
 | `DEFAULT_API_KEY` | 默认 Pixel API Key；只需填写此变量即可使用内置 Pixel 地址和模型。Key 会注入前端资源，请使用低权限/可轮换 Key |
-| `DEFAULT_API_URL` | 高级覆盖预置配置；留空时使用应用内置的 `https://api.ai-pixel.online/v1`。也支持 JSON 文件或导入链接，详见 [预置配置说明](#preset-config) |
+| `DEFAULT_API_URL` | 高级覆盖预置配置；留空时使用应用内置的 `https://ai-pixel.online/v1`。也支持 JSON 文件或导入链接，详见 [预置配置说明](#preset-config) |
 | `ENABLE_API_PROXY=true` | 开启 Nginx 同源代理，请求发往 `/api-proxy/{路径}` 再转发到 `API_PROXY_URL` |
 | `API_PROXY_URL` | 代理转发的完整 API 基础地址（不自动补 `/v1`） |
 | `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |

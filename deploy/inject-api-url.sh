@@ -2,7 +2,7 @@
 
 # 用环境变量替换前端默认 API URL 和 Key。URL 默认固定为 Pixel API，仍保留高级覆盖能力。
 if [ "${DEFAULT_API_URL+x}" != "x" ]; then
-    DEFAULT_API_URL=${API_URL:-https://api.ai-pixel.online/v1}
+    DEFAULT_API_URL=${API_URL:-https://ai-pixel.online/v1}
 fi
 DEFAULT_API_KEY=${DEFAULT_API_KEY:-}
 DOCKER_LEGACY_API_URL_USED=${DOCKER_LEGACY_API_URL_USED:-false}
