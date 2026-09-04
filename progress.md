@@ -12,6 +12,10 @@
 - 本地最终验证通过：`npm test -- --run` 为 37 个测试文件、549 项测试；`npm run build`、`node --check deploy/async-task-server.mjs`、部署脚本 `sh -n` 和 `git diff --check` 均通过。
 - `jdy` 现状核对：容器仍运行旧提交 `21f44c8`，端口为 `5173:80`，并保留配置只读挂载与持久化任务目录挂载；远端没有 `rg`，已改用基础命令检查。
 - 提交前敏感信息扫描第一次因匹配规则过宽，把文件名 `async-task-server` 误识别为 `sk-...`；改用至少 20 位 ASCII Key 模式复核后再继续，未发现真实 Key。
+- 提交 `782ad5f` 已推送到 `origin/main`；`jdy` 已 fast-forward 到该提交并成功构建新 Docker 镜像。
+- 已重建 `gpt-image-playground` 容器，保留 `unless-stopped`、`5173:80`、配置只读挂载和持久化任务目录；Node 异步任务进程正常运行。
+- 线上 smoke 通过：首页 HTTP 200；`/api-agent-tasks` 创建校验 HTTP 400、未知任务查询 HTTP 404；新前端资源包含 `api-agent-tasks`；服务端三路配置 Key 均确认已加载（仅检查非空，未打印值）。
+- Phase 19 已完成。未发起真实生图请求，避免部署验收产生额外计费；建议用户手机端强制刷新后重新测试 Agent 生图。
 
 ## Session: 2026-09-04 — Phase 17
 

@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 19: Agent 生图失败最终定位（进行中）
+Phase 19: Agent 生图失败最终定位（已完成）
 
 ## Phases
 
@@ -166,8 +166,8 @@ Phase 19: Agent 生图失败最终定位（进行中）
 - [x] 获取用户本次失败对应的完整请求时序和前端错误
 - [x] 覆盖所有 Agent 生图断线/恢复分支，避免继续把可恢复任务显示为失败
 - [x] 增加回归测试并完成构建验证
-- [ ] 推送并重新部署，验证线上新资源和任务进程
-- **Status:** in_progress
+- [x] 推送并重新部署，验证线上新资源和任务进程
+- **Status:** complete
 
 ## Key Questions
 
@@ -205,6 +205,10 @@ Phase 19: Agent 生图失败最终定位（进行中）
 | 当前机器 Docker daemon 不可用 | 1 | 执行 Dockerfile/脚本静态审计与 shell 语法检查，未构建镜像 |
 | zsh 将 GitHub API URL 的 `?ref=main` 解析为通配符 | 1 | 为包含查询参数的 URL 加单引号后继续检查 |
 | 提交前 Key 扫描误报 | 1 | 匹配规则误命中文件名 `async-task-server`，改用长度约束的 Key 模式复核 |
+| 远端项目路径误判 | 1 | `/opt/gpt_image_playground` 不存在，改用已确认的 `/root/gpt_image_playground` |
+| 远端 Git 版本不支持 `branch --show-current` | 1 | 改用 `git symbolic-ref --short HEAD` |
+| 远端未安装 `rg` | 1 | 改用 `grep` 和明确路径检查 |
+| SSH 配置校验命令引号不匹配 | 1 | 改用分层引号重跑，确认配置已加载但不输出 Key |
 
 ## Notes
 
