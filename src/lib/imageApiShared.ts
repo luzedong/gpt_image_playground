@@ -195,7 +195,8 @@ export async function getApiErrorMessage(response: Response): Promise<string> {
     else if (errJson.message) errorMsg = errJson.message
   } catch {
     try {
-      errorMsg = await textResponse.text()
+      const text = await textResponse.text()
+      if (text.trim()) errorMsg = text.trim()
     } catch {
       /* ignore */
     }

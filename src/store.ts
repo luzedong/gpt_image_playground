@@ -2645,8 +2645,14 @@ async function executeAgentRound(
     const imageRequestSettings = createSettingsForApiProfile(requestSettings, imageProfile)
     const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0 })
     const streamingTaskIds: string[] = resume ? [...round.outputTaskIds] : []
+    const attachedContinuationImageTaskIds = new Set<string>()
     const taskIdByToolCallId = new Map<string, string>()
     const taskByToolCallId = new Map<string, TaskRecord>()
+
+    const getPendingContinuationImageTaskIds = () => streamingTaskIds.filter((taskId) => {
+      if (attachedContinuationImageTaskIds.has(taskId)) return false
+      return useStore.getState().tasks.find((task) => task.id === taskId)?.status === 'done'
+    })
 
     const getDeletedAgentTasks = () => {
       const deletedTasks = getDeletedActiveAgentTasks(conversationId, roundId, controller)
@@ -2841,16 +2847,18 @@ async function executeAgentRound(
     let apiInputForTurn = apiInput
     if (resume) {
       const resumeState = useStore.getState()
+      const continuationImageTaskIds = getPendingContinuationImageTaskIds()
       apiInputForTurn = await buildAgentContinuationInput({
         baseInput: apiInput,
         currentRound: round,
         tasks: resumeState.tasks,
         currentRoundOutput: accumulatedOutputItems,
-        batchTaskIds: resume.recoveredTaskIds,
+        batchTaskIds: continuationImageTaskIds,
         toolCallsUsed,
         maxToolCalls,
         loadImage: ensureImageCached,
       })
+      continuationImageTaskIds.forEach((taskId) => attachedContinuationImageTaskIds.add(taskId))
     }
     let reachedToolLimit = resume ? toolCallsUsed >= maxToolCalls : false
     let pendingToolTextSeparator = false
@@ -3416,17 +3424,19 @@ async function executeAgentRound(
       const latestRound = latestConversation?.rounds.find((item) => item.id === roundId)
       if (!latestRound) break
 
+      const continuationImageTaskIds = getPendingContinuationImageTaskIds()
       apiInputForTurn = await buildAgentContinuationInput({
         baseInput: apiInput,
         currentRound: latestRound,
         tasks: continuationState.tasks,
         currentRoundOutput: accumulatedOutputItemsWithFunctionOutputs,
         functionCallOutputs: effectiveFunctionCallOutputs,
-        batchTaskIds: streamingTaskIds,
+        batchTaskIds: continuationImageTaskIds,
         toolCallsUsed,
         maxToolCalls,
         loadImage: ensureImageCached,
       })
+      continuationImageTaskIds.forEach((taskId) => attachedContinuationImageTaskIds.add(taskId))
       accumulatedOutputItems = accumulatedOutputItemsWithFunctionOutputs
       pendingToolTextSeparator = true
     }
