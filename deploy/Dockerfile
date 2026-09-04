@@ -59,4 +59,4 @@ RUN mkdir -p /var/lib/gpt-image-playground/tasks
 
 EXPOSE 80
 
-CMD ["sh", "-c", "node /opt/gpt-image-playground/async-task-server.mjs & exec nginx -g 'daemon off;'"]
+CMD ["sh", "-c", ". /docker-entrypoint.d/05-migrate-api-env.envsh; node /opt/gpt-image-playground/async-task-server.mjs & exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
