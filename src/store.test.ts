@@ -4515,6 +4515,55 @@ describe('agent built-in image tool failure', () => {
     expect(useStore.getState().agentConversations[0]?.messages.slice(-1)[0]?.content).toBe('restart continuation complete')
   })
 
+  it('retries the Agent continuation after the server image is done but the chat request drops', async () => {
+    const imageProfile = createDefaultOpenAIProfile({ id: 'image-profile', apiKey: 'image-key', apiMode: 'images' })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...useStore.getState().settings,
+        profiles: [responsesProfile, imageProfile],
+        activeProfileId: responsesProfile.id,
+        agentApiConfigMode: 'hybrid',
+        agentTextProfileId: responsesProfile.id,
+        agentImageProfileId: imageProfile.id,
+      }),
+    })
+    vi.mocked(callAgentResponsesApi)
+      .mockResolvedValueOnce({
+        text: '',
+        images: [],
+        outputItems: [{
+          type: 'function_call',
+          name: 'generate_image',
+          call_id: 'continuation-drop-call',
+          arguments: JSON.stringify({ id: 'image', prompt: 'continuation drop prompt' }),
+        }],
+        responseId: 'response-continuation-drop',
+      })
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockResolvedValueOnce({
+        text: 'continuation retry complete',
+        images: [],
+        outputItems: [{ type: 'message', content: [{ type: 'output_text', text: 'continuation retry complete' }] }],
+        responseId: 'response-continuation-retry',
+      })
+    vi.mocked(callImageApi).mockImplementationOnce(async (opts) => {
+      await opts.onServerTaskEnqueued?.({ taskId: 'continuation-drop-task' })
+      return {
+        images: ['data:image/png;base64,continuation-drop-image'],
+        actualParams: {},
+        actualParamsList: [{}],
+        revisedPrompts: ['continuation drop prompt'],
+      }
+    })
+
+    await submitAgentMessage()
+
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0]?.rounds[0]?.status).toBe('done'))
+    expect(callAgentResponsesApi).toHaveBeenCalledTimes(3)
+    expect(callImageApi).toHaveBeenCalledTimes(1)
+    expect(useStore.getState().agentConversations[0]?.messages.slice(-1)[0]?.content).toBe('continuation retry complete')
+  })
+
   it('reports only committed Hybrid batch results and counts only those tools', async () => {
     const imageProfile = createDefaultOpenAIProfile({ id: 'image-profile', apiKey: 'image-key', apiMode: 'images' })
     const deletedRequest = deferred<Awaited<ReturnType<typeof callImageApi>>>()

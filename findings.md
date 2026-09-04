@@ -1,5 +1,11 @@
 # Findings & Decisions
 
+## Agent 续答断线恢复（2026-09-04）
+
+- 用户截图显示 Agent 第 2 轮出现 `Load failed`，远端 Nginx 日志对应 `GET /api-tasks/<id>` 200 后的 `POST /api-proxy/chat/responses` 499。
+- 这说明服务端图片任务已经成功完成，失败发生在图片结果回填后的 Agent Responses 续答；当前 catch 只对仍在运行的图片任务做恢复，已完成图片任务对应的续答仍被标记为失败。
+- 目标是持久化轮次已有的 function call/function call output 与 done 图片任务，断线时保留轮次 running，页面恢复后重建续答输入并重试，不重新创建图片任务。
+
 ## Agent 对话异步生图恢复（2026-09-04）
 
 - Agent hybrid 模式先由 Responses 请求返回 `generate_image`，再由浏览器调用 `/api-tasks` 并轮询；图片任务虽已在服务端运行，但轮询使用 Agent 轮次的 AbortController。

@@ -82,6 +82,7 @@ const activeTaskExecutions = new Set<string>()
 let pageLifecycleEnding = false
 let pageLifecycleGeneration = 0
 const agentRoundControllers = new Map<string, AbortController>()
+const agentRoundRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const agentRecoveryContinuations = new Set<string>()
 const deletedActiveAgentTasks = new Map<string, { task: TaskRecord; controller: AbortController }>()
 let agentConversationPersistenceReady = false
@@ -1353,6 +1354,38 @@ function scheduleServerRecovery(taskId: string, delayMs = SERVER_RECOVERY_POLL_M
   serverRecoveryTimers.set(taskId, timer)
 }
 
+function clearAgentRoundRecoveryTimer(conversationId: string, roundId: string) {
+  const key = getAgentRoundControllerKey(conversationId, roundId)
+  const timer = agentRoundRecoveryTimers.get(key)
+  if (timer) clearTimeout(timer)
+  agentRoundRecoveryTimers.delete(key)
+}
+
+function getRecoverableAgentRoundTask(conversationId: string, roundId: string) {
+  const state = useStore.getState()
+  const conversation = state.agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!round || round.status !== 'running' || !round.responseOutput?.some((item) => item.type === 'function_call_output')) return null
+
+  const roundTasks = round.outputTaskIds
+    .map((taskId) => state.tasks.find((task) => task.id === taskId))
+    .filter((task): task is TaskRecord => Boolean(task))
+  if (roundTasks.length === 0 || roundTasks.some((task) => !task.serverTaskId || task.status !== 'done')) return null
+  return roundTasks[0]
+}
+
+function scheduleAgentRoundRecovery(conversationId: string, roundId: string, delayMs = SERVER_RECOVERY_POLL_MS) {
+  const key = getAgentRoundControllerKey(conversationId, roundId)
+  if (agentRoundRecoveryTimers.has(key)) return
+  const task = getRecoverableAgentRoundTask(conversationId, roundId)
+  if (!task) return
+  const timer = setTimeout(() => {
+    agentRoundRecoveryTimers.delete(key)
+    void continueRecoveredAgentRound(task.id)
+  }, delayMs)
+  agentRoundRecoveryTimers.set(key, timer)
+}
+
 function scheduleCustomRecovery(taskId: string, delayMs = CUSTOM_RECOVERY_POLL_MS) {
   if (customRecoveryTimers.has(taskId)) return
   if (!useStore.getState().tasks.some((task) => task.id === taskId)) return
@@ -2080,6 +2113,7 @@ export function stopAgentResponse(conversationId = useStore.getState().activeAge
   const runningRound = activeRunningRound ?? conversation.rounds.find((round) => round.status === 'running')
   if (!runningRound) return
 
+  clearAgentRoundRecoveryTimer(conversationId, runningRound.id)
   const controller = agentRoundControllers.get(getAgentRoundControllerKey(conversationId, runningRound.id))
   if (controller) {
     controller.abort()
@@ -2673,6 +2707,7 @@ async function executeAgentRound(
   const startedAt = Date.now()
   const controller = new AbortController()
   const controllerKey = getAgentRoundControllerKey(conversationId, roundId)
+  clearAgentRoundRecoveryTimer(conversationId, roundId)
   agentRoundControllers.set(controllerKey, controller)
   try {
     const latestState = useStore.getState()
@@ -3599,6 +3634,12 @@ async function executeAgentRound(
       if (recoverableTasks.length > 0) {
         // Responses 长连接断开不应覆盖已经进入服务端队列的图片任务和 Agent 轮次。
         for (const task of recoverableTasks) scheduleServerRecovery(task.id, pageLifecycleEnding ? SERVER_RECOVERY_POLL_MS : 0)
+        return
+      }
+
+      if (getRecoverableAgentRoundTask(conversationId, roundId)) {
+        // 图片已经完成，但手机浏览器断开了后续 Responses 请求；保留轮次并重建续答。
+        scheduleAgentRoundRecovery(conversationId, roundId, pageLifecycleEnding ? SERVER_RECOVERY_POLL_MS : 0)
         return
       }
     }
