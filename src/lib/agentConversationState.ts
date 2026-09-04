@@ -37,6 +37,7 @@ function normalizeAgentRound(value: unknown, fallbackIndex: number): AgentRound 
     maskTargetImageId: typeof round.maskTargetImageId === 'string' ? round.maskTargetImageId : null,
     maskImageId: typeof round.maskImageId === 'string' ? round.maskImageId : null,
     outputTaskIds: normalizeStringArray(round.outputTaskIds),
+    ...(typeof round.serverTaskId === 'string' && round.serverTaskId ? { serverTaskId: round.serverTaskId } : {}),
     ...(typeof round.responseId === 'string' ? { responseId: round.responseId } : {}),
     ...(responseOutput ? { responseOutput } : {}),
     status,

@@ -46,8 +46,9 @@ import {
   storeImageWithSize,
 } from './lib/db'
 import { callImageApi } from './lib/api'
-import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle, parseBatchImageCallArguments, type AgentApiResultImage } from './lib/agentApi'
+import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle, createAgentInstructions, parseBatchImageCallArguments, type AgentApiResultImage } from './lib/agentApi'
 import { buildAgentApiInput, buildAgentContinuationInput } from './lib/agentInputBuilder'
+import { callServerManagedAgentApi } from './lib/serverManagedAgentApi'
 import { collectAgentRoundOutputImageSlots, extractAgentReferenceIds, getAgentCurrentReferenceId, getAgentGeneratedImageReferenceId } from './lib/agentImageReferences'
 import { showBrowserNotification } from './lib/browserNotification'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
@@ -1386,6 +1387,19 @@ function scheduleAgentRoundRecovery(conversationId: string, roundId: string, del
   agentRoundRecoveryTimers.set(key, timer)
 }
 
+function scheduleServerManagedAgentRoundRecovery(conversationId: string, roundId: string, delayMs = SERVER_RECOVERY_POLL_MS) {
+  const key = getAgentRoundControllerKey(conversationId, roundId)
+  if (agentRoundRecoveryTimers.has(key)) return
+  const conversation = useStore.getState().agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!round || round.status !== 'running' || !round.serverTaskId) return
+  const timer = setTimeout(() => {
+    agentRoundRecoveryTimers.delete(key)
+    void resumeServerManagedAgentRound(conversationId, roundId)
+  }, delayMs)
+  agentRoundRecoveryTimers.set(key, timer)
+}
+
 function scheduleCustomRecovery(taskId: string, delayMs = CUSTOM_RECOVERY_POLL_MS) {
   if (customRecoveryTimers.has(taskId)) return
   if (!useStore.getState().tasks.some((task) => task.id === taskId)) return
@@ -1556,7 +1570,9 @@ export async function initStore() {
   const restoredAgentConversations = loadedAgentConversations.map((conversation) => {
     let changed = false
     const rounds = conversation.rounds.map((round) => {
-      if (round.status !== 'error' || !round.outputTaskIds.some((taskId) => serverTaskIds.has(taskId))) return round
+      const hasServerAgentTask = isServerManagedApiConfigEnabled() && Boolean(round.serverTaskId) && round.error !== AGENT_STOPPED_MESSAGE
+      const hasServerImageTask = round.outputTaskIds.some((taskId) => serverTaskIds.has(taskId))
+      if (round.status !== 'error' || (!hasServerAgentTask && !hasServerImageTask)) return round
       changed = true
       return { ...round, status: 'running' as const, error: null, finishedAt: null }
     })
@@ -1893,6 +1909,10 @@ function resumePendingAgentRounds() {
   for (const conversation of agentConversations) {
     for (const round of conversation.rounds) {
       if (round.status !== 'running') continue
+      if (isServerManagedApiConfigEnabled() && round.serverTaskId) {
+        scheduleServerManagedAgentRoundRecovery(conversation.id, round.id, 0)
+        continue
+      }
       const completedTask = round.outputTaskIds
         .map((taskId) => tasks.find((task) => task.id === taskId))
         .find((task) => task?.status === 'done' || task?.status === 'error')
@@ -2436,6 +2456,216 @@ async function continueRecoveredAgentRound(taskId: string) {
   }
 }
 
+async function resumeServerManagedAgentRound(conversationId: string, roundId: string) {
+  const state = useStore.getState()
+  const conversation = state.agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!conversation || !round || round.status !== 'running' || !round.serverTaskId) return
+
+  const normalizedSettings = normalizeSettings(state.settings)
+  const activeProfile = getAgentTextApiProfile(normalizedSettings)
+  const imageProfile = getAgentImageApiProfile(normalizedSettings)
+  if (!activeProfile || !imageProfile) return
+
+  const imageRequestSettings = createSettingsForApiProfile(normalizedSettings, imageProfile)
+  const normalizedParams = {
+    ...normalizeParamsForSettings(state.params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0 }),
+    n: DEFAULT_PARAMS.n,
+    transparent_output: false,
+  }
+  const requestSettings = createSettingsForApiProfile(normalizedSettings, activeProfile)
+  await executeAgentRound(conversationId, roundId, normalizedParams, requestSettings, activeProfile, imageProfile)
+}
+
+function getServerAgentImagePrompt(outputItems: ResponsesOutputItem[], toolCallId: string | undefined, fallback: string) {
+  if (!toolCallId) return fallback
+  const functionCall = outputItems.find((item) => item.type === 'function_call' && item.call_id === toolCallId)
+  if (!functionCall || functionCall.type !== 'function_call') return fallback
+  try {
+    const args = JSON.parse(functionCall.arguments ?? '{}') as Record<string, unknown>
+    return typeof args.prompt === 'string' && args.prompt.trim() ? args.prompt.trim() : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function getAgentReferenceImageIds(conversation: AgentConversation, roundId: string, referenceIds: string[], tasks: TaskRecord[]) {
+  const imageIds: string[] = []
+  for (const candidateRound of getAgentRoundPath(conversation, roundId)) {
+    for (let index = 0; index < candidateRound.inputImageIds.length; index += 1) {
+      if (referenceIds.includes(getAgentCurrentReferenceId(candidateRound, index))) imageIds.push(candidateRound.inputImageIds[index])
+    }
+    const outputImages = collectAgentRoundOutputImageSlots(candidateRound, tasks)
+    for (let index = 0; index < outputImages.length; index += 1) {
+      const imageId = outputImages[index]
+      if (imageId && referenceIds.includes(getAgentGeneratedImageReferenceId(candidateRound, index))) imageIds.push(imageId)
+    }
+  }
+  return uniqueIds(imageIds)
+}
+
+async function commitServerManagedAgentResult(
+  conversationId: string,
+  roundId: string,
+  assistantMessageId: string,
+  startedAt: number,
+  params: TaskParams,
+  imageProfile: ApiProfile,
+  result: Awaited<ReturnType<typeof callServerManagedAgentApi>>,
+) {
+  const state = useStore.getState()
+  const conversation = state.agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!conversation || !round) return
+
+  const existingTasks = state.tasks.filter((task) => task.agentConversationId === conversationId && task.agentRoundId === roundId)
+  const taskIds: string[] = []
+  const resultReferenceImageIds = new Map<string, string>()
+  for (const [index, image] of result.images.entries()) {
+    const prompt = image.prompt ?? getServerAgentImagePrompt(result.outputItems ?? [], image.toolCallId, round.prompt)
+    const existingTask = existingTasks.find((task) =>
+      image.toolCallId && task.agentToolCallId === image.toolCallId &&
+      (image.batchItemId == null || task.agentBatchItemId === image.batchItemId),
+    )
+    if (existingTask?.outputImages.length) {
+      taskIds.push(existingTask.id)
+      if (image.referenceId) resultReferenceImageIds.set(image.referenceId, existingTask.outputImages[0])
+      continue
+    }
+
+    const stored = await storeImageWithSize(image.dataUrl, 'generated')
+    cacheImage(stored.id, image.dataUrl)
+    const referenceIds = uniqueIds(image.referenceIds ?? extractAgentReferenceIds(prompt))
+    const referenceImageIds = getAgentReferenceImageIds(conversation, roundId, referenceIds, state.tasks)
+    const inputImageIds = uniqueIds([
+      ...round.inputImageIds,
+      ...referenceImageIds,
+      ...referenceIds.map((referenceId) => resultReferenceImageIds.get(referenceId) ?? '').filter(Boolean),
+    ])
+    const actualParams = deriveAgentImageActualParams(image.actualParams, stored)
+    const task: TaskRecord = {
+      id: genId(),
+      prompt,
+      params: { ...params, n: 1 },
+      apiProvider: imageProfile.provider,
+      apiProfileId: imageProfile.id,
+      apiProfileName: imageProfile.name,
+      apiMode: imageProfile.apiMode,
+      apiModel: imageProfile.model,
+      inputImageIds,
+      maskTargetImageId: round.maskTargetImageId ?? null,
+      maskImageId: round.maskImageId ?? null,
+      outputImages: [stored.id],
+      actualParams,
+      actualParamsByImage: { [stored.id]: actualParams },
+      revisedPromptByImage: image.revisedPrompt ? { [stored.id]: image.revisedPrompt } : undefined,
+      rawResponsePayload: result.rawResponsePayload,
+      status: 'done',
+      error: null,
+      createdAt: startedAt,
+      finishedAt: Date.now(),
+      elapsed: Date.now() - startedAt,
+      sourceMode: 'agent',
+      agentConversationId: conversationId,
+      agentRoundId: roundId,
+      agentMessageId: assistantMessageId,
+      agentToolCallId: image.toolCallId ?? `server-image-${index}`,
+      ...(image.batchCallId ? { agentBatchCallId: image.batchCallId } : {}),
+      ...(image.batchItemId ? { agentBatchItemId: image.batchItemId } : {}),
+      agentToolAction: image.action,
+    }
+    useStore.getState().setTasks([task, ...useStore.getState().tasks])
+    await putTask(task)
+    taskIds.push(task.id)
+    if (image.referenceId) resultReferenceImageIds.set(image.referenceId, stored.id)
+  }
+
+  const outputTaskIds = uniqueIds([...round.outputTaskIds, ...taskIds])
+  const content = result.text.trim() || (outputTaskIds.length > 0 ? '图像已生成。' : '')
+  const assistantMessage: AgentMessage = {
+    id: assistantMessageId,
+    role: 'assistant',
+    content,
+    roundId,
+    outputTaskIds,
+    createdAt: Date.now(),
+  }
+  updateAgentConversation(conversationId, (current) => ({
+    ...current,
+    updatedAt: Date.now(),
+    rounds: current.rounds.map((item) => item.id === roundId
+      ? {
+          ...item,
+          assistantMessageId,
+          outputTaskIds,
+          responseId: result.responseId,
+          responseOutput: result.outputItems,
+          status: 'done',
+          error: null,
+          finishedAt: Date.now(),
+        }
+      : item),
+    messages: current.messages.some((message) => message.id === assistantMessageId)
+      ? current.messages.map((message) => message.id === assistantMessageId ? assistantMessage : message)
+      : [...current.messages, assistantMessage],
+  }))
+  await flushAgentConversationsToIndexedDB()
+  useStore.getState().showToast(outputTaskIds.length > 0 ? 'Agent 已生成图片' : 'Agent 已回复', 'success')
+}
+
+async function executeServerManagedAgentRound(opts: {
+  conversationId: string
+  round: AgentRound
+  roundId: string
+  assistantMessageId: string
+  apiInput: unknown[]
+  params: TaskParams
+  requestSettings: AppSettings
+  imageProfile: ApiProfile
+  signal: AbortSignal
+  startedAt: number
+}) {
+  const { conversationId, round, roundId, assistantMessageId, apiInput, params, requestSettings, imageProfile, signal, startedAt } = opts
+  updateAgentConversation(conversationId, (current) => ({
+    ...current,
+    updatedAt: Date.now(),
+    rounds: current.rounds.map((item) => item.id === roundId ? { ...item, assistantMessageId } : item),
+    messages: current.messages.some((message) => message.id === assistantMessageId)
+      ? current.messages
+      : [...current.messages, {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          roundId,
+          createdAt: Date.now(),
+        }],
+  }))
+
+  const maxToolRounds = Number.isFinite(requestSettings.agentMaxToolRounds)
+    ? Math.max(1, Math.trunc(requestSettings.agentMaxToolRounds))
+    : DEFAULT_AGENT_MAX_TOOL_ROUNDS
+  const result = await callServerManagedAgentApi({
+    taskId: round.serverTaskId!,
+    input: apiInput,
+    instructions: createAgentInstructions(requestSettings),
+    params,
+    roundIndex: round.index,
+    maxToolRounds,
+    enableWebSearch: requestSettings.agentWebSearch,
+    signal,
+  })
+  if (signal.aborted) throw createAgentAbortError()
+  await commitServerManagedAgentResult(
+    conversationId,
+    roundId,
+    assistantMessageId,
+    startedAt,
+    params,
+    imageProfile,
+    result,
+  )
+}
+
 export async function submitAgentMessage() {
   const state = useStore.getState()
   const { settings, prompt, inputImages, maskDraft, params, showToast } = state
@@ -2530,6 +2760,7 @@ export async function submitAgentMessage() {
     maskTargetImageId,
     maskImageId,
     outputTaskIds: [],
+    ...(isServerManagedApiConfigEnabled() ? { serverTaskId: genId() } : {}),
     status: 'running',
     error: null,
     createdAt: now,
@@ -2578,6 +2809,8 @@ export async function submitAgentMessage() {
   state.clearInputImages()
   state.clearMaskDraft()
   state.setAgentEditingRoundId(null)
+
+  if (isServerManagedApiConfigEnabled()) await flushAgentConversationsToIndexedDB()
 
   if (fallbackTitle) {
     void generateAgentConversationTitle(conversation.id, trimmedPrompt, inputImageIds, requestSettings, activeProfile, fallbackTitle)
@@ -2637,6 +2870,7 @@ export async function regenerateAgentAssistantMessage(conversationId: string, ro
           ? {
               ...round,
               outputTaskIds: [],
+              ...(isServerManagedApiConfigEnabled() ? { serverTaskId: genId() } : {}),
               responseId: undefined,
               responseOutput: undefined,
               status: 'running',
@@ -2668,6 +2902,7 @@ export async function regenerateAgentAssistantMessage(conversationId: string, ro
     maskTargetImageId: sourceRound.maskTargetImageId ?? sourceUserMessage.maskTargetImageId ?? null,
     maskImageId: sourceRound.maskImageId ?? sourceUserMessage.maskImageId ?? null,
     outputTaskIds: [],
+    ...(isServerManagedApiConfigEnabled() ? { serverTaskId: genId() } : {}),
     status: 'running',
     error: null,
     createdAt: now,
@@ -2738,6 +2973,23 @@ async function executeAgentRound(
     const shouldStreamAssistantMessage = activeProfile.streamImages === true
     const imageRequestSettings = createSettingsForApiProfile(requestSettings, imageProfile)
     const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0 })
+
+    if (isServerManagedApiConfigEnabled() && round.serverTaskId && !resume) {
+      await executeServerManagedAgentRound({
+        conversationId,
+        round,
+        roundId,
+        assistantMessageId,
+        apiInput,
+        params: { ...imageParams, n: DEFAULT_PARAMS.n, transparent_output: false },
+        requestSettings,
+        imageProfile,
+        signal: controller.signal,
+        startedAt,
+      })
+      return
+    }
+
     const streamingTaskIds: string[] = resume ? [...round.outputTaskIds] : []
     const attachedContinuationImageTaskIds = new Set<string>()
     const taskIdByToolCallId = new Map<string, string>()
@@ -3625,6 +3877,15 @@ async function executeAgentRound(
     if (isAgentRecoveryPauseError(err)) return
 
     if (isNetworkRecoverableError(err)) {
+      const recoverableServerRound = useStore.getState().agentConversations
+        .find((conversation) => conversation.id === conversationId)
+        ?.rounds.find((round) => round.id === roundId)
+      if (isServerManagedApiConfigEnabled() && recoverableServerRound?.status === 'running' && recoverableServerRound.serverTaskId) {
+        // 整轮任务由服务端持有；浏览器请求断开后用固定任务 ID 重新接管。
+        scheduleServerManagedAgentRoundRecovery(conversationId, roundId, pageLifecycleEnding ? SERVER_RECOVERY_POLL_MS : 0)
+        return
+      }
+
       const recoverableTasks = useStore.getState().tasks.filter((task) =>
         task.agentConversationId === conversationId &&
         task.agentRoundId === roundId &&
@@ -3672,6 +3933,7 @@ async function executeAgentRound(
                 status: 'error',
                 error: message,
                 finishedAt: Date.now(),
+                serverTaskId: undefined,
               }
             : round,
         ),

@@ -6,8 +6,13 @@ import { isEventStreamResponse, readJsonServerSentEvents, throwIfAborted } from 
 
 export interface AgentApiResultImage {
   toolCallId?: string
+  batchCallId?: string
+  batchItemId?: string
+  referenceId?: string
+  referenceIds?: string[]
   action?: string
   dataUrl: string
+  prompt?: string
   actualParams?: Partial<TaskParams>
   revisedPrompt?: string
 }
@@ -59,7 +64,7 @@ const AGENT_MATH_FORMATTING_INSTRUCTIONS = [
   '- Do not use LaTeX delimiters like `\\(...\\)` or `\\[...\\]` in visible assistant text.',
 ].join('\n')
 
-function createAgentInstructions(settings: AppSettings, codexCliSize?: string) {
+export function createAgentInstructions(settings: AppSettings, codexCliSize?: string) {
   const maxToolRounds = Number.isFinite(settings.agentMaxToolRounds)
     ? Math.max(1, Math.trunc(settings.agentMaxToolRounds))
     : DEFAULT_AGENT_MAX_TOOL_ROUNDS

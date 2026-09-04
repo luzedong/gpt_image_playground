@@ -1,5 +1,18 @@
 # Progress Log
 
+## Session: 2026-09-05 — Phase 19
+
+- 用户反馈重新部署后 Agent 生图仍失败。
+- 远端容器已确认运行最新镜像；最近日志暂未出现新的失败请求，继续审计所有 Agent 生图恢复分支并获取可复现时序。
+- 已确认远端仍运行 `21f44c8` 的旧前端，Agent 请求仍走 `/api-proxy/chat/responses`；远端历史两个参考图失败任务的根因是旧服务端把直连图像 API 的文件字段发送为 `image`，而 `direct.linkai.pics` 需要 `image[]`。
+- 修正服务端 Agent 批量结果按模型顺序归并，避免并发完成顺序改变生成图引用；同时为固定 Agent 任务 ID 增加创建锁，并让任务异常保存不会卡住后续队列。
+- 进程级假上游验证通过：Agent 批量任务最终状态 `done` 且图片顺序保持 `slow, fast`；带参考图的 Agent 任务走直连 `/images/edits`，multipart 使用 1 个 `image[]` 文件；整轮共完成 4 次 Responses 请求（两轮 Agent）。
+- 本轮最终审查确认：前端 Agent 已切换到 `/api-agent-tasks` 固定任务 ID，Nginx 已代理创建/查询路由；本地工作区仍待测试、提交和部署，远端当前仍是旧提交。
+- 一次辅助 `rg` 命令因 zsh 未匹配到 `docker-compose.yml*` 退出，未影响代码或部署；后续改用明确文件路径检查。
+- 本地最终验证通过：`npm test -- --run` 为 37 个测试文件、549 项测试；`npm run build`、`node --check deploy/async-task-server.mjs`、部署脚本 `sh -n` 和 `git diff --check` 均通过。
+- `jdy` 现状核对：容器仍运行旧提交 `21f44c8`，端口为 `5173:80`，并保留配置只读挂载与持久化任务目录挂载；远端没有 `rg`，已改用基础命令检查。
+- 提交前敏感信息扫描第一次因匹配规则过宽，把文件名 `async-task-server` 误识别为 `sk-...`；改用至少 20 位 ASCII Key 模式复核后再继续，未发现真实 Key。
+
 ## Session: 2026-09-04 — Phase 17
 
 - 定位确认：画廊任务的服务端队列已正常工作，Agent hybrid 的图片任务却与浏览器 Responses AbortController 绑定；断开后主轮次 catch 会覆盖为失败。

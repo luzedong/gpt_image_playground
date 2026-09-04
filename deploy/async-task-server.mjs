@@ -11,6 +11,7 @@ const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const activeTasks = new Set()
 const pendingTasks = []
+const agentTaskCreationLocks = new Map()
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload)
@@ -93,13 +94,27 @@ function dataUrlByteLength(dataUrl) {
   return Buffer.byteLength(match[1], 'utf8')
 }
 
+function normalizeTaskParams(params) {
+  if (!params || typeof params !== 'object') throw new Error('生成参数无效')
+  return {
+    size: typeof params.size === 'string' ? params.size : 'auto',
+    quality: params.quality === 'low' || params.quality === 'medium' || params.quality === 'high' ? params.quality : 'auto',
+    output_format: params.output_format === 'jpeg' || params.output_format === 'webp' ? params.output_format : 'png',
+    output_compression: typeof params.output_compression === 'number' && Number.isFinite(params.output_compression)
+      ? Math.min(100, Math.max(0, Math.trunc(params.output_compression)))
+      : null,
+    moderation: params.moderation === 'low' ? 'low' : 'auto',
+    n: Math.min(4, Math.max(1, Math.trunc(Number(params.n) || 1))),
+    transparent_output: params.transparent_output === true,
+  }
+}
+
 function normalizeTaskInput(input) {
   if (!input || typeof input !== 'object') throw new Error('任务格式无效')
   const body = input
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   if (!prompt) throw new Error('提示词不能为空')
-  const params = body.params
-  if (!params || typeof params !== 'object') throw new Error('生成参数无效')
+  const params = normalizeTaskParams(body.params)
   const inputImages = Array.isArray(body.inputImages) ? body.inputImages : []
   const maskDataUrl = typeof body.maskDataUrl === 'string' && body.maskDataUrl.startsWith('data:') ? body.maskDataUrl : undefined
   const imageDataUrls = [...inputImages, ...(maskDataUrl ? [maskDataUrl] : [])]
@@ -109,17 +124,7 @@ function normalizeTaskInput(input) {
 
   return {
     prompt,
-    params: {
-      size: typeof params.size === 'string' ? params.size : 'auto',
-      quality: params.quality === 'low' || params.quality === 'medium' || params.quality === 'high' ? params.quality : 'auto',
-      output_format: params.output_format === 'jpeg' || params.output_format === 'webp' ? params.output_format : 'png',
-      output_compression: typeof params.output_compression === 'number' && Number.isFinite(params.output_compression)
-        ? Math.min(100, Math.max(0, Math.trunc(params.output_compression)))
-        : null,
-      moderation: params.moderation === 'low' ? 'low' : 'auto',
-      n: Math.min(4, Math.max(1, Math.trunc(Number(params.n) || 1))),
-      transparent_output: params.transparent_output === true,
-    },
+    params,
     inputImages,
     maskDataUrl,
     nativeTransparentBackground: body.nativeTransparentBackground === true,
@@ -131,12 +136,23 @@ function is4K(size) {
   return Boolean(match && Number(match[1]) * Number(match[2]) > MAX_1K_PIXELS)
 }
 
+function isPixelApiUrl(baseUrl) {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase()
+    return hostname === 'ai-pixel.online' || hostname.endsWith('.ai-pixel.online')
+  } catch {
+    return /(^|\/\/)(?:api\.)?ai-pixel\.online(?:\/|$)/i.test(baseUrl)
+  }
+}
+
 function getUpstreamConfig(size) {
   const isHighResolution = is4K(size)
+  const baseUrl = (isHighResolution
+    ? process.env.IMAGE_4K_API_URL || process.env.API_URL
+    : process.env.IMAGE_1K_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
   return {
-    baseUrl: (isHighResolution
-      ? process.env.IMAGE_4K_API_URL || process.env.API_URL
-      : process.env.IMAGE_1K_API_URL || process.env.API_URL || '').replace(/\/+$/, ''),
+    baseUrl,
+    isPixel: isPixelApiUrl(baseUrl),
     apiKey: isHighResolution
       ? process.env.IMAGE_4K_API_KEY || process.env.API_KEY || ''
       : process.env.IMAGE_1K_API_KEY || process.env.API_KEY || '',
@@ -196,8 +212,7 @@ async function executeUpstream(task) {
   const config = getUpstreamConfig(task.params.size)
   if (!config.baseUrl || !config.apiKey) throw new Error('服务端图像 API 配置不完整')
   const headers = { Authorization: `Bearer ${config.apiKey}` }
-  const isHighResolution = is4K(task.params.size)
-  const isPixel = !isHighResolution
+  const isPixel = config.isPixel
   const inputImages = isPixel ? task.inputImages.slice(0, 1) : task.inputImages
   const isEdit = inputImages.length > 0
   let response
@@ -250,26 +265,331 @@ async function executeUpstream(task) {
   return normalizeImageResult(payload, task.params.output_format)
 }
 
+function normalizeAgentTaskInput(input) {
+  if (!input || typeof input !== 'object') throw new Error('Agent 任务格式无效')
+  const taskId = typeof input.task_id === 'string' ? input.task_id.trim() : ''
+  if (!/^[A-Za-z0-9_-]{8,160}$/.test(taskId)) throw new Error('Agent 任务 ID 无效')
+  if (!Array.isArray(input.input)) throw new Error('Agent 输入格式无效')
+  if (Buffer.byteLength(JSON.stringify(input.input), 'utf8') > MAX_INPUT_BYTES) throw new Error('Agent 输入图片总大小超过 512 MiB')
+  const instructions = typeof input.instructions === 'string' ? input.instructions.trim() : ''
+  if (!instructions) throw new Error('Agent 指令不能为空')
+
+  return {
+    taskId,
+    input: input.input,
+    instructions,
+    params: normalizeTaskParams(input.params),
+    roundIndex: Math.min(1000, Math.max(1, Math.trunc(Number(input.round_index) || 1))),
+    maxToolRounds: Math.min(30, Math.max(1, Math.trunc(Number(input.max_tool_rounds) || 15))),
+    enableWebSearch: input.enable_web_search === true,
+  }
+}
+
+function createAgentTools(enableWebSearch) {
+  const tools = [
+    {
+      type: 'function',
+      name: 'generate_image',
+      description: 'Generate one image through the app image API. Include XML ref tags inside the prompt when an existing image is required.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          prompt: { type: 'string' },
+        },
+        required: ['id', 'prompt'],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+    {
+      type: 'function',
+      name: 'generate_image_batch',
+      description: 'Generate multiple independent images concurrently. Include XML ref tags inside prompts when needed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          images: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                prompt: { type: 'string' },
+              },
+              required: ['id', 'prompt'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['images'],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+    {
+      type: 'function',
+      name: 'continue_generation',
+      description: 'Request another round only after a prerequisite image was generated and dependent images remain.',
+      parameters: {
+        type: 'object',
+        properties: { reason: { type: 'string' } },
+        required: ['reason'],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  ]
+  if (enableWebSearch) tools.push({ type: 'web_search' })
+  return tools
+}
+
+function getAgentResponseText(payload) {
+  const chunks = []
+  for (const item of Array.isArray(payload?.output) ? payload.output : []) {
+    if (item?.type !== 'message') continue
+    for (const part of Array.isArray(item.content) ? item.content : []) {
+      if ((part?.type === 'output_text' || part?.type === 'text') && typeof part.text === 'string') chunks.push(part.text)
+      if (part?.type === 'refusal' && typeof part.refusal === 'string') chunks.push(part.refusal)
+    }
+  }
+  return chunks.join('\n').trim()
+}
+
+function getAgentResponseOutput(payload) {
+  return Array.isArray(payload?.output) ? payload.output.filter((item) => item && typeof item === 'object') : []
+}
+
+async function callAgentUpstream(input, instructions, tools) {
+  const baseUrl = (process.env.CHAT_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
+  const apiKey = process.env.CHAT_API_KEY || process.env.API_KEY || ''
+  const model = process.env.CHAT_MODEL || 'gpt-5.6-luna'
+  if (!baseUrl || !apiKey) throw new Error('服务端聊天 API 配置不完整')
+  const response = await fetchWithTimeout(`${baseUrl}/responses`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ model, instructions, input, tools, stream: false }),
+  })
+  const payload = await readApiPayload(response)
+  if (!response.ok) throw new Error(payload?.error?.message || `聊天 API 返回 HTTP ${response.status}`)
+  if (!Array.isArray(payload?.output)) throw new Error('聊天 API 未返回有效响应')
+  return payload
+}
+
+function getAgentReferenceIds(text) {
+  return Array.from(String(text || '').matchAll(/<ref\b[^>]*\bid=(['"])([^'"]+)\1[^>]*\/?\s*>/gi), (match) => match[2])
+}
+
+function collectAgentReferenceImages(input) {
+  const references = new Map()
+  const visit = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+      return
+    }
+    if (!value || typeof value !== 'object') return
+    const content = value.content
+    if (Array.isArray(content)) {
+      const images = content
+        .filter((part) => part?.type === 'input_image' && typeof part.image_url === 'string' && part.image_url.startsWith('data:'))
+        .map((part) => part.image_url)
+      const refs = content.flatMap((part) => part?.type === 'input_text' && typeof part.text === 'string' ? getAgentReferenceIds(part.text) : [])
+      for (let index = 0; index < Math.min(images.length, refs.length); index++) references.set(refs[index], images[index])
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== 'content') visit(child)
+    }
+  }
+  visit(input)
+  return references
+}
+
+function stripAgentReferenceTags(prompt) {
+  return String(prompt || '').replace(/<ref\b[^>]*\/?\s*>/gi, '').replace(/<removed_ref\b[^>]*\/?\s*>/gi, '').trim()
+}
+
+function escapeXmlAttribute(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function createAgentGeneratedImagesInput(images) {
+  if (images.length === 0) return null
+  const content = []
+  for (const image of images) {
+    content.push({ type: 'input_image', image_url: image.dataUrl })
+    content.push({
+      type: 'input_text',
+      text: `<ref id="${image.referenceId}" prompt="${escapeXmlAttribute(image.prompt)}" />`,
+    })
+  }
+  return { role: 'user', content }
+}
+
+function parseAgentFunctionArguments(item) {
+  try {
+    const value = JSON.parse(item.arguments || '{}')
+    return value && typeof value === 'object' ? value : null
+  } catch {
+    return null
+  }
+}
+
+async function executeAgentImage(task, toolCallId, prompt, references, metadata = {}) {
+  const cleanPrompt = stripAgentReferenceTags(prompt)
+  if (!cleanPrompt) throw new Error('图像提示词不能为空')
+  const result = await executeUpstream({
+    params: { ...task.params, n: 1 },
+    prompt: cleanPrompt,
+    inputImages: references,
+    nativeTransparentBackground: false,
+  })
+  return result.images.map((dataUrl, index) => ({
+    dataUrl,
+    toolCallId: metadata.batchCallId ? `${metadata.batchCallId}:${metadata.batchItemId || index + 1}` : toolCallId,
+    ...(metadata.batchCallId ? { batchCallId: metadata.batchCallId, batchItemId: metadata.batchItemId } : {}),
+    prompt: cleanPrompt,
+    referenceIds: getAgentReferenceIds(prompt),
+    actualParams: { ...task.params, n: 1 },
+    revisedPrompt: cleanPrompt,
+    action: references.length > 0 ? 'edit' : 'generate',
+  }))
+}
+
+async function executeAgentUpstream(task) {
+  let input = task.input
+  const tools = createAgentTools(task.enableWebSearch)
+  const references = collectAgentReferenceImages(input)
+  const outputItems = []
+  const images = []
+  const textSegments = []
+  let responseId
+
+  for (let responseRound = 0; responseRound < task.maxToolRounds; responseRound++) {
+    const payload = await callAgentUpstream(input, task.instructions, tools)
+    responseId = typeof payload.id === 'string' ? payload.id : responseId
+    const currentOutput = getAgentResponseOutput(payload)
+    outputItems.push(...currentOutput)
+    const text = getAgentResponseText(payload)
+    if (text) textSegments.push(text)
+
+    const functionCalls = currentOutput.filter((item) =>
+      item.type === 'function_call' &&
+      (item.name === 'generate_image' || item.name === 'generate_image_batch' || item.name === 'continue_generation'),
+    )
+    if (functionCalls.length === 0) break
+
+    const functionOutputs = []
+    const generatedThisRound = []
+    for (const functionCall of functionCalls) {
+      const callId = typeof functionCall.call_id === 'string' && functionCall.call_id ? functionCall.call_id : `server-call-${responseRound + 1}`
+      const args = parseAgentFunctionArguments(functionCall)
+      if (functionCall.name === 'continue_generation') {
+        functionOutputs.push({ type: 'function_call_output', call_id: callId, output: JSON.stringify({ status: 'continued' }) })
+        continue
+      }
+      if (functionCall.name === 'generate_image') {
+        const prompt = typeof args?.prompt === 'string' ? args.prompt : ''
+        const refs = getAgentReferenceIds(prompt).map((id) => references.get(id)).filter((value) => typeof value === 'string')
+        try {
+          const generated = await executeAgentImage(task, callId, prompt, refs)
+          generated.forEach((image) => {
+            image.referenceId = `round-${task.roundIndex}-image-${images.length + 1}`
+            images.push(image)
+            generatedThisRound.push(image)
+            references.set(image.referenceId, image.dataUrl)
+          })
+          functionOutputs.push({ type: 'function_call_output', call_id: callId, output: JSON.stringify({ id: typeof args?.id === 'string' ? args.id : 'image', status: 'done' }) })
+        } catch (error) {
+          functionOutputs.push({ type: 'function_call_output', call_id: callId, output: JSON.stringify({ id: typeof args?.id === 'string' ? args.id : 'image', status: 'error', error: error instanceof Error ? error.message : String(error) }) })
+        }
+        continue
+      }
+
+      const batchItems = Array.isArray(args?.images) ? args.images : []
+      const batchResults = await Promise.all(batchItems.map(async (item, index) => {
+        const prompt = typeof item?.prompt === 'string' ? item.prompt : ''
+        const refs = getAgentReferenceIds(prompt).map((id) => references.get(id)).filter((value) => typeof value === 'string')
+        const itemId = typeof item?.id === 'string' ? item.id : String(index + 1)
+        try {
+          const generated = await executeAgentImage(task, `${callId}:${itemId}`, prompt, refs, {
+            batchCallId: callId,
+            batchItemId: itemId,
+          })
+          return { id: itemId, status: 'done', generated }
+        } catch (error) {
+          return { id: itemId, status: 'error', error: error instanceof Error ? error.message : String(error), generated: [] }
+        }
+      }))
+      // 请求可以乱序完成，但 Agent 的引用编号必须保持模型给出的批量顺序。
+      for (const batchResult of batchResults) {
+        for (const image of batchResult.generated) {
+          image.referenceId = `round-${task.roundIndex}-image-${images.length + 1}`
+          images.push(image)
+          generatedThisRound.push(image)
+          references.set(image.referenceId, image.dataUrl)
+        }
+      }
+      const publicBatchResults = batchResults.map(({ generated: _generated, ...result }) => result)
+      functionOutputs.push({ type: 'function_call_output', call_id: callId, output: JSON.stringify({ images: publicBatchResults }) })
+    }
+
+    outputItems.push(...functionOutputs)
+    input = [...input, ...currentOutput, ...functionOutputs]
+    const generatedInput = createAgentGeneratedImagesInput(generatedThisRound)
+    if (generatedInput) input.push(generatedInput)
+  }
+
+  return {
+    responseId,
+    text: textSegments.join('\n\n').trim(),
+    images,
+    outputItems,
+    rawResponsePayload: JSON.stringify({ output: outputItems }, null, 2),
+  }
+}
+
 async function runTask(task) {
   activeTasks.add(task.id)
-  task.status = 'running'
-  task.updatedAt = Date.now()
-  await saveTask(task)
   try {
-    task.result = await executeUpstream(task)
-    task.status = 'done'
-    task.error = null
+    task.status = 'running'
+    task.updatedAt = Date.now()
+    await saveTask(task)
+    try {
+      task.result = task.kind === 'agent' ? await executeAgentUpstream(task) : await executeUpstream(task)
+      task.status = 'done'
+      task.error = null
+    } catch (error) {
+      task.status = 'error'
+      task.error = error instanceof Error ? error.message : String(error)
+    }
+    task.inputImages = undefined
+    task.maskDataUrl = undefined
+    task.input = undefined
+    task.instructions = undefined
+    task.finishedAt = Date.now()
+    task.updatedAt = task.finishedAt
+    await saveTask(task)
   } catch (error) {
     task.status = 'error'
     task.error = error instanceof Error ? error.message : String(error)
+    task.inputImages = undefined
+    task.maskDataUrl = undefined
+    task.input = undefined
+    task.instructions = undefined
+    task.finishedAt = Date.now()
+    task.updatedAt = task.finishedAt
+    try {
+      await saveTask(task)
+    } catch (saveError) {
+      console.error('保存异步任务失败', saveError)
+    }
+  } finally {
+    activeTasks.delete(task.id)
+    pumpQueue()
   }
-  task.inputImages = undefined
-  task.maskDataUrl = undefined
-  task.finishedAt = Date.now()
-  task.updatedAt = task.finishedAt
-  await saveTask(task)
-  activeTasks.delete(task.id)
-  pumpQueue()
 }
 
 function pumpQueue() {
@@ -335,9 +655,69 @@ async function handleCreate(req, res) {
   }
 }
 
+async function handleCreateAgent(req, res) {
+  let taskId = ''
+  try {
+    const body = normalizeAgentTaskInput(JSON.parse(await readRequestBody(req)))
+    taskId = body.taskId
+    let creation = agentTaskCreationLocks.get(body.taskId)
+    if (!creation) {
+      creation = (async () => {
+        const existing = await loadTask(body.taskId)
+        if (existing) return existing
+
+        const task = {
+          id: body.taskId,
+          kind: 'agent',
+          status: 'queued',
+          input: body.input,
+          instructions: body.instructions,
+          params: body.params,
+          roundIndex: body.roundIndex,
+          maxToolRounds: body.maxToolRounds,
+          enableWebSearch: body.enableWebSearch,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          error: null,
+        }
+        await saveTask(task)
+        pendingTasks.push(task)
+        pumpQueue()
+        return task
+      })()
+      agentTaskCreationLocks.set(body.taskId, creation)
+    }
+
+    const task = await creation
+    agentTaskCreationLocks.delete(body.taskId)
+    if (task.kind !== 'agent') {
+      json(res, 409, { error: { message: 'Agent 任务 ID 已被其他任务使用' } })
+      return
+    }
+    json(res, 202, { task_id: task.id, status: task.status })
+  } catch (error) {
+    if (taskId) agentTaskCreationLocks.delete(taskId)
+    json(res, 400, { error: { message: error instanceof Error ? error.message : String(error) } })
+  }
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   const match = url.pathname.match(/^\/api-tasks\/([a-f0-9-]+)$/i)
+  const agentMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)$/)
+  if (req.method === 'POST' && url.pathname === '/api-agent-tasks') {
+    await handleCreateAgent(req, res)
+    return
+  }
+  if (req.method === 'GET' && agentMatch) {
+    const task = await loadTask(agentMatch[1])
+    if (!task || task.kind !== 'agent') {
+      json(res, 404, { error: { message: 'Agent 任务不存在' } })
+      return
+    }
+    json(res, 200, publicTask(task))
+    return
+  }
   if (req.method === 'POST' && url.pathname === '/api-tasks') {
     await handleCreate(req, res)
     return

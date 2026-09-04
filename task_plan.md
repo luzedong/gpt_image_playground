@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 18: Agent 续答断线恢复（进行中）
+Phase 19: Agent 生图失败最终定位（进行中）
 
 ## Phases
 
@@ -161,6 +161,14 @@ Phase 18: Agent 续答断线恢复（进行中）
 - [x] 完成构建、全量测试、推送和远端部署验证
 - **Status:** complete
 
+### Phase 19: Agent 生图失败最终定位
+
+- [x] 获取用户本次失败对应的完整请求时序和前端错误
+- [x] 覆盖所有 Agent 生图断线/恢复分支，避免继续把可恢复任务显示为失败
+- [x] 增加回归测试并完成构建验证
+- [ ] 推送并重新部署，验证线上新资源和任务进程
+- **Status:** in_progress
+
 ## Key Questions
 
 1. 如何让 Studio 工作区复用现有 `InputBar`、`TaskGrid`、`submitTask` 和 IndexedDB，而不是复制一套状态？
@@ -196,6 +204,7 @@ Phase 18: Agent 续答断线恢复（进行中）
 | Chrome smoke 首次使用模糊 label 匹配到多个控件 | 1 | 改用 `textbox` role 精确定位 API Key 输入框 |
 | 当前机器 Docker daemon 不可用 | 1 | 执行 Dockerfile/脚本静态审计与 shell 语法检查，未构建镜像 |
 | zsh 将 GitHub API URL 的 `?ref=main` 解析为通配符 | 1 | 为包含查询参数的 URL 加单引号后继续检查 |
+| 提交前 Key 扫描误报 | 1 | 匹配规则误命中文件名 `async-task-server`，改用长度约束的 Key 模式复核 |
 
 ## Notes
 

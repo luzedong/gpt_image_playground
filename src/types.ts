@@ -287,6 +287,8 @@ export interface AgentRound {
   maskTargetImageId?: string | null
   maskImageId?: string | null
   outputTaskIds: string[]
+  /** 服务端 Agent 任务 ID，用于页面切换/关闭后继续整轮对话 */
+  serverTaskId?: string
   responseId?: string
   responseOutput?: ResponsesOutputItem[]
   status: AgentRoundStatus

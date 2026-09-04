@@ -1,5 +1,23 @@
 # Findings & Decisions
 
+## Agent 生图失败最终定位（2026-09-05）
+
+- 上一轮修复已部署；远端容器运行新镜像，当前首页引用最新构建资源。
+- 读取远端最近 2 小时日志时，仅看到页面资源请求和一次 `POST /api-proxy/chat/responses` HTTP 200，尚未看到本次失败对应的请求，因此还不能把用户当前失败归因到同一条 499 链路。
+- 需要继续核对 Agent 生图的初始 Responses、服务端图片任务创建/轮询、续答三个阶段，以及前端缓存/错误状态是否仍会覆盖可恢复轮次。
+- 当前恢复分支依赖 `isNetworkRecoverableError()`，并且已完成图片任务的续答恢复依赖轮次中已经写入 `function_call_output`；断线若发生在这两个持久化节点之前，仍可能进入普通失败分支。
+- 混合模式的初始 Responses、图片任务和续答由同一个浏览器执行上下文串联，最终方案需要以已持久化的 Agent 任务/轮次状态为准，而不能只依赖异常类型或当前页面生命周期事件。
+- 远端容器首页返回的 `/assets/index-DvHupnTH.js` 为 HTTP 200、约 995 KB；本地当前构建因环境差异生成了不同 hash，需通过代码标记/行为而非文件名判断是否部署了修复。
+- 服务端持久化任务记录显示此前有多条图片任务成功完成，但两条带参考图的任务失败，错误是上游返回的 `Invalid image file or mode for image 1`；容器重建后暂未产生新的 `/api-tasks` 任务记录，因此这组失败不能与用户本次反馈直接等同。
+- 目前需要同时处理两类问题：Agent 连接生命周期不能依赖浏览器，以及直连图像 API 对参考图/编辑图的请求格式必须与其实际兼容契约一致。
+- 代码审计发现一个确定的契约错误：服务端 `executeUpstream()` 用“是否高分辨率”判断是否 Pixel，从而把 1K 请求发往 `IMAGE_1K_API_URL` 时仍按 Pixel 格式发送（`image` 字段及精简参数）；当 1K/2K 已切换到直连 API 时，带参考图请求会被直连上游以 `Invalid image file or mode for image 1` 拒绝。
+- 因此本轮修复需要按实际上游 URL/供应商判断请求契约，同时把 Agent 整轮继续收敛到服务端任务，不能只在浏览器端补异常重试。
+- 最终审查确认固定 Docker 模式的 Agent 初始 Responses、工具图像请求和后续 Responses 都在 Node 任务进程中执行；浏览器只 POST/GET 同源 Agent 任务。任务 JSON 和输出结果通过 `/var/lib/gpt-image-playground` 持久化，页面重开时使用轮次中保存的 `serverTaskId`。
+- 前端新资源尚未部署到 `jdy`；因此线上仍显示旧版 `Load failed` 行为是预期的，必须完成本轮推送和容器重建后再复测。
+- 本地验证结果：37 个测试文件、549 项测试通过；Vite 生产构建、Node 异步任务服务语法、部署脚本语法及 diff 空白检查均通过。
+- `jdy` 远端工作目录为 `/root/gpt_image_playground`；当前容器名 `gpt-image-playground`，绑定 `5173:80`，配置文件以只读方式挂载，任务数据目录持久化挂载。远端未安装 `rg`，不影响部署。
+- 敏感信息扫描的首次误报来自 `async-task-server` 文件名中的 `sk-` 子串；使用长度约束复核后，代码和计划文件均未包含用户真实 Key。
+
 ## Agent 续答断线恢复（2026-09-04）
 
 - 用户截图显示 Agent 第 2 轮出现 `Load failed`，远端 Nginx 日志对应 `GET /api-tasks/<id>` 200 后的 `POST /api-proxy/chat/responses` 499。
@@ -10,6 +28,8 @@
 
 - Agent hybrid 模式先由 Responses 请求返回 `generate_image`，再由浏览器调用 `/api-tasks` 并轮询；图片任务虽已在服务端运行，但轮询使用 Agent 轮次的 AbortController。
 - 页面切换/关闭导致轮询请求中断后，`executeAgentRound()` 的 catch 会把轮次和图片任务一起标记失败，已保存的 `serverTaskId` 因而没有被继续使用。
+- 线上旧容器 `/var/lib/gpt-image-playground/tasks` 中两个带参考图的失败任务均返回 LinkAI `Invalid image file or mode for image 1`；旧服务端按“1K=Pixel”发送 `image`，但当前 1K/2K 路由已切到 `direct.linkai.pics`，该接口应使用 `image[]`。
+- 服务端 Agent 轮次现直接持有 Responses 请求和图像调用，客户端只提交固定轮次 ID 并轮询；生成结果在前端提交时会保留参考图关联，后续对话可继续引用同一图片。
 - 修复策略：服务端任务存在 `serverTaskId` 时，网络断线保留任务为 running，安排稍后使用原 task ID 恢复；Agent 轮次保持 running，任务完成后通过已持久化的 function call output 继续 Responses 轮次。
 - 初始化时额外扫描仍为 running 且已有完成图片任务的 Agent 轮次，避免“图片已完成但 Agent 轮次没有继续”的孤立状态。
 
