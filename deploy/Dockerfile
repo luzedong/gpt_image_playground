@@ -23,7 +23,10 @@ RUN npm run build
 # ---- Production stage ----
 FROM nginx:alpine
 
-RUN apk add --no-cache nodejs
+# 直接复用构建阶段的 Node 运行时，避免生产阶段再次访问 Alpine 软件源。
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=build /usr/lib/libgcc_s.so.1 /usr/lib/libgcc_s.so.1
+COPY --from=build /usr/lib/libstdc++.so.6 /usr/lib/libstdc++.so.6
 
 ENV HOST=0.0.0.0
 ENV PORT=80
