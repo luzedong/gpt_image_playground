@@ -1,5 +1,12 @@
 # Findings & Decisions
 
+## Agent 对话异步生图恢复（2026-09-04）
+
+- Agent hybrid 模式先由 Responses 请求返回 `generate_image`，再由浏览器调用 `/api-tasks` 并轮询；图片任务虽已在服务端运行，但轮询使用 Agent 轮次的 AbortController。
+- 页面切换/关闭导致轮询请求中断后，`executeAgentRound()` 的 catch 会把轮次和图片任务一起标记失败，已保存的 `serverTaskId` 因而没有被继续使用。
+- 修复策略：服务端任务存在 `serverTaskId` 时，网络断线保留任务为 running，安排稍后使用原 task ID 恢复；Agent 轮次保持 running，任务完成后通过已持久化的 function call output 继续 Responses 轮次。
+- 初始化时额外扫描仍为 running 且已有完成图片任务的 Agent 轮次，避免“图片已完成但 Agent 轮次没有继续”的孤立状态。
+
 ## 服务端异步生图任务（2026-09-04）
 
 - 当前 `submitTask()` 先写入浏览器 IndexedDB，再由 `executeTask()` 直接调用 `callImageApi()`；Pixel Images API 没有可查询的上游 task ID，切换页面只能依赖重提，无法保证原请求继续运行。

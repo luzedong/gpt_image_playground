@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 16: 服务端异步生图任务（进行中）
+Phase 17: Agent 对话异步生图恢复（进行中）
 
 ## Phases
 
@@ -144,6 +144,14 @@ Phase 16: 服务端异步生图任务（进行中）
 - [x] 更新 Docker/Nginx 启动方式、数据卷和部署说明
 - [x] 完成测试、构建、部署和移动端生命周期验证
 - **Status:** complete
+
+### Phase 17: Agent 对话异步生图恢复
+
+- [ ] 让 Agent 混合模式的服务端图片任务在 Responses 连接断开后保持运行并恢复
+- [ ] 页面重开时恢复已完成图片任务对应的 Agent 轮次
+- [ ] 增加断线/重开回归测试
+- [ ] 完成构建、全量测试和 diff 检查
+- **Status:** in_progress
 
 ## Key Questions
 

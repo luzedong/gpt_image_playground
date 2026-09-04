@@ -1,5 +1,10 @@
 # Progress Log
 
+## Session: 2026-09-04 — Phase 17
+
+- 定位确认：画廊任务的服务端队列已正常工作，Agent hybrid 的图片任务却与浏览器 Responses AbortController 绑定；断开后主轮次 catch 会覆盖为失败。
+- 待完成：补服务端 task ID 的断线恢复调度、Agent 轮次恢复扫描、回归测试和验证。
+
 ## Session: 2026-09-04 — Phase 16
 
 - 将 Docker 固定模式的画廊、Studio 和 Agent 图像子任务改为服务端持久化异步队列；浏览器只创建任务并轮询，切换页面、刷新或容器重启后可继续处理。

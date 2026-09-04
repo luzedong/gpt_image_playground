@@ -4385,6 +4385,136 @@ describe('agent built-in image tool failure', () => {
     expect(conversation.messages.find((message) => message.role === 'assistant')?.content).not.toContain('已达到最大工具调用次数')
   })
 
+  it('recovers a Hybrid image task from the server task id after the Agent connection drops', async () => {
+    const imageProfile = createDefaultOpenAIProfile({ id: 'image-profile', apiKey: 'image-key', apiMode: 'images' })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...useStore.getState().settings,
+        profiles: [responsesProfile, imageProfile],
+        activeProfileId: responsesProfile.id,
+        agentApiConfigMode: 'hybrid',
+        agentTextProfileId: responsesProfile.id,
+        agentImageProfileId: imageProfile.id,
+      }),
+    })
+    vi.mocked(callAgentResponsesApi)
+      .mockResolvedValueOnce({
+        text: '',
+        images: [],
+        outputItems: [{
+          type: 'function_call',
+          name: 'generate_image',
+          call_id: 'server-recovery-call',
+          arguments: JSON.stringify({ id: 'image', prompt: 'server recovery prompt' }),
+        }],
+        responseId: 'response-server-recovery',
+      })
+      .mockResolvedValueOnce({
+        text: 'server recovery complete',
+        images: [],
+        outputItems: [{ type: 'message', content: [{ type: 'output_text', text: 'server recovery complete' }] }],
+        responseId: 'response-server-recovery-complete',
+      })
+    vi.mocked(callImageApi)
+      .mockImplementationOnce(async (opts) => {
+        await opts.onServerTaskEnqueued?.({ taskId: 'server-recovery-task' })
+        throw new TypeError('Failed to fetch')
+      })
+      .mockImplementationOnce(async (opts) => {
+        expect(opts.serverTaskId).toBe('server-recovery-task')
+        return {
+          images: ['data:image/png;base64,server-recovered'],
+          actualParams: {},
+          actualParamsList: [{}],
+          revisedPrompts: ['server recovery prompt'],
+        }
+      })
+
+    await submitAgentMessage()
+
+    await vi.waitFor(() => {
+      const state = useStore.getState()
+      expect(state.agentConversations[0]?.rounds[0]?.status).toBe('done')
+    })
+    expect(callImageApi).toHaveBeenCalledTimes(2)
+    expect(useStore.getState().tasks[0]).toMatchObject({
+      serverTaskId: 'server-recovery-task',
+      status: 'done',
+    })
+    expect(useStore.getState().agentConversations[0]?.messages.slice(-1)[0]?.content).toContain('server recovery complete')
+  })
+
+  it('continues a running Agent round when its server image task finished before restart', async () => {
+    const imageProfile = createDefaultOpenAIProfile({ id: 'image-profile', apiKey: 'image-key', apiMode: 'images' })
+    const completedTask = task({
+      id: 'server-finished-task',
+      prompt: 'restart prompt',
+      outputImages: ['server-finished-image'],
+      status: 'done',
+      serverTaskId: 'server-finished-id',
+      sourceMode: 'agent',
+      agentConversationId: 'conversation-a',
+      agentRoundId: 'server-finished-round',
+      agentMessageId: 'server-finished-assistant',
+      agentToolCallId: 'server-finished-call',
+    })
+    const conversation = agentConversation({
+      id: 'conversation-a',
+      activeRoundId: 'server-finished-round',
+      rounds: [{
+        id: 'server-finished-round',
+        index: 1,
+        parentRoundId: null,
+        userMessageId: 'server-finished-user',
+        assistantMessageId: 'server-finished-assistant',
+        prompt: 'restart prompt',
+        inputImageIds: [],
+        outputTaskIds: [completedTask.id],
+        responseOutput: [{
+          type: 'function_call',
+          name: 'generate_image',
+          call_id: 'server-finished-call',
+          arguments: JSON.stringify({ id: 'image', prompt: 'restart prompt' }),
+        }],
+        status: 'running',
+        error: null,
+        createdAt: 1,
+        finishedAt: null,
+      }],
+      messages: [
+        { id: 'server-finished-user', role: 'user', content: 'restart prompt', roundId: 'server-finished-round', createdAt: 1 },
+        { id: 'server-finished-assistant', role: 'assistant', content: '请求失败：上次请求已中断', roundId: 'server-finished-round', createdAt: 2 },
+      ],
+    })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...useStore.getState().settings,
+        profiles: [responsesProfile, imageProfile],
+        activeProfileId: responsesProfile.id,
+        agentApiConfigMode: 'hybrid',
+        agentTextProfileId: responsesProfile.id,
+        agentImageProfileId: imageProfile.id,
+      }),
+      tasks: [],
+      agentConversations: [],
+      activeAgentConversationId: null,
+    })
+    await putDbTask(completedTask)
+    await putAgentConversation(conversation)
+    vi.mocked(callAgentResponsesApi).mockResolvedValueOnce({
+      text: 'restart continuation complete',
+      images: [],
+      outputItems: [{ type: 'message', content: [{ type: 'output_text', text: 'restart continuation complete' }] }],
+      responseId: 'restart-continuation-response',
+    })
+
+    await initStore()
+
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0]?.rounds[0]?.status).toBe('done'))
+    expect(callAgentResponsesApi).toHaveBeenCalledTimes(1)
+    expect(useStore.getState().agentConversations[0]?.messages.slice(-1)[0]?.content).toBe('restart continuation complete')
+  })
+
   it('reports only committed Hybrid batch results and counts only those tools', async () => {
     const imageProfile = createDefaultOpenAIProfile({ id: 'image-profile', apiKey: 'image-key', apiMode: 'images' })
     const deletedRequest = deferred<Awaited<ReturnType<typeof callImageApi>>>()

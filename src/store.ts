@@ -72,9 +72,11 @@ import { stripInjectedCodexCliSizePrompt } from './lib/size'
 
 const FAL_RECOVERY_POLL_MS = 10_000
 const CUSTOM_RECOVERY_POLL_MS = 10_000
+const SERVER_RECOVERY_POLL_MS = 10_000
 const SUPPORT_PROMPT_IMAGE_THRESHOLD = 50
 const falRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const serverRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const openAIWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const activeTaskExecutions = new Set<string>()
 let pageLifecycleEnding = false
@@ -1334,6 +1336,23 @@ function clearCustomRecoveryTimer(taskId: string) {
   customRecoveryTimers.delete(taskId)
 }
 
+function clearServerRecoveryTimer(taskId: string) {
+  const timer = serverRecoveryTimers.get(taskId)
+  if (timer) clearTimeout(timer)
+  serverRecoveryTimers.delete(taskId)
+}
+
+function scheduleServerRecovery(taskId: string, delayMs = SERVER_RECOVERY_POLL_MS) {
+  if (serverRecoveryTimers.has(taskId)) return
+  const task = useStore.getState().tasks.find((item) => item.id === taskId)
+  if (!task?.serverTaskId || task.status !== 'running') return
+  const timer = setTimeout(() => {
+    serverRecoveryTimers.delete(taskId)
+    resumePendingTasks()
+  }, delayMs)
+  serverRecoveryTimers.set(taskId, timer)
+}
+
 function scheduleCustomRecovery(taskId: string, delayMs = CUSTOM_RECOVERY_POLL_MS) {
   if (customRecoveryTimers.has(taskId)) return
   if (!useStore.getState().tasks.some((task) => task.id === taskId)) return
@@ -1498,6 +1517,23 @@ export async function initStore() {
   const favoriteState = useStore.getState()
   const normalizedFavorites = normalizeLoadedFavoriteState(markedTasks.map(getPersistableTask), favoriteState.favoriteCollections, favoriteState.defaultFavoriteCollectionId)
   const tasks = normalizedFavorites.tasks
+  const serverTaskIds = new Set(tasks
+    .filter((task) => isAgentTask(task) && task.serverTaskId && (task.status === 'running' || task.status === 'done'))
+    .map((task) => task.id))
+  const restoredAgentConversations = loadedAgentConversations.map((conversation) => {
+    let changed = false
+    const rounds = conversation.rounds.map((round) => {
+      if (round.status !== 'error' || !round.outputTaskIds.some((taskId) => serverTaskIds.has(taskId))) return round
+      changed = true
+      return { ...round, status: 'running' as const, error: null, finishedAt: null }
+    })
+    return changed ? { ...conversation, rounds, updatedAt: Date.now() } : conversation
+  })
+  if (restoredAgentConversations.some((conversation, index) => conversation !== loadedAgentConversations[index])) {
+    loadedAgentConversations = restoredAgentConversations
+    useStore.setState({ agentConversations: restoredAgentConversations })
+    await replaceStoredAgentConversations(restoredAgentConversations)
+  }
   if (normalizedFavorites.collections !== favoriteState.favoriteCollections) {
     favoriteState.setFavoriteCollections(normalizedFavorites.collections)
   }
@@ -1529,6 +1565,7 @@ export async function initStore() {
   // 同步 Images API 没有可查询的服务端 task_id；刷新后重新提交仍保留任务记录，
   // 避免用户看到任务被直接判定为失败。已完成的异步任务走上面的恢复轮询。
   resumePendingTasks()
+  resumePendingAgentRounds()
 
   // 收集所有任务引用的图片 id
   const referencedIds = new Set<string>()
@@ -1818,10 +1855,27 @@ export function resumePendingTasks() {
   }
 }
 
+function resumePendingAgentRounds() {
+  const { agentConversations, tasks } = useStore.getState()
+  for (const conversation of agentConversations) {
+    for (const round of conversation.rounds) {
+      if (round.status !== 'running') continue
+      const completedTask = round.outputTaskIds
+        .map((taskId) => tasks.find((task) => task.id === taskId))
+        .find((task) => task?.status === 'done' || task?.status === 'error')
+      if (completedTask) void continueRecoveredAgentRound(completedTask.id)
+    }
+  }
+}
+
 export function setPageLifecycleEnding(ending: boolean) {
   pageLifecycleEnding = ending
-  if (ending) pageLifecycleGeneration += 1
-  if (!ending) resumePendingTasks()
+  if (ending) {
+    pageLifecycleGeneration += 1
+    return
+  }
+  resumePendingTasks()
+  resumePendingAgentRounds()
 }
 
 function getActiveAgentConversation(): AgentConversation {
@@ -1882,6 +1936,7 @@ function markAgentRoundTasksStopped(conversationId: string, roundId: string, now
   for (const task of runningTasks) {
     clearFalRecoveryTimer(task.id)
     clearCustomRecoveryTimer(task.id)
+    clearServerRecoveryTimer(task.id)
     updateTaskInStore(task.id, {
       ...createTaskErrorPatch(task, AGENT_STOPPED_MESSAGE, now),
       falRecoverable: false,
@@ -2640,7 +2695,11 @@ async function executeAgentRound(
       ? conversation.messages.find((message) => message.id === round.assistantMessageId) ?? null
       : conversation.messages.find((message) => message.roundId === roundId && message.role === 'assistant') ?? null
     const assistantMessageId = existingAssistantMessage?.id ?? genId()
-    const resumedAssistantContent = resume ? existingAssistantMessage?.content.trim() ?? '' : ''
+    const resumedAssistantContent = resume && existingAssistantMessage?.content.startsWith('请求失败：')
+      ? ''
+      : resume
+        ? existingAssistantMessage?.content.trim() ?? ''
+        : ''
     const shouldStreamAssistantMessage = activeProfile.streamImages === true
     const imageRequestSettings = createSettingsForApiProfile(requestSettings, imageProfile)
     const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0 })
@@ -2805,6 +2864,18 @@ async function executeAgentRound(
           customRecoverable: true,
         })
         scheduleCustomRecovery(taskId)
+        return true
+      }
+
+      if (latestTask.serverTaskId) {
+        // 服务端任务已经脱离浏览器继续执行，保留 running 状态并用原 task id 恢复轮询。
+        useStore.getState().setTaskStreamPreview(taskId)
+        updateTaskInStore(taskId, {
+          error: null,
+          finishedAt: null,
+          elapsed: null,
+        })
+        scheduleServerRecovery(taskId, pageLifecycleEnding ? SERVER_RECOVERY_POLL_MS : 0)
         return true
       }
 
@@ -3518,6 +3589,20 @@ async function executeAgentRound(
 
     if (isAgentRecoveryPauseError(err)) return
 
+    if (isNetworkRecoverableError(err)) {
+      const recoverableTasks = useStore.getState().tasks.filter((task) =>
+        task.agentConversationId === conversationId &&
+        task.agentRoundId === roundId &&
+        task.status === 'running' &&
+        Boolean(task.serverTaskId),
+      )
+      if (recoverableTasks.length > 0) {
+        // Responses 长连接断开不应覆盖已经进入服务端队列的图片任务和 Agent 轮次。
+        for (const task of recoverableTasks) scheduleServerRecovery(task.id, pageLifecycleEnding ? SERVER_RECOVERY_POLL_MS : 0)
+        return
+      }
+    }
+
     let message = err instanceof Error ? err.message : String(err)
     const usesApiProxy = activeProfile.apiProxy ?? requestSettings.apiProxy
     const networkErrorHint = getApiRequestNetworkErrorHint(err, startedAt, usesApiProxy, activeProfile)
@@ -3587,6 +3672,7 @@ async function executeAgentRound(
 async function executeTask(taskId: string, options: { resumed?: boolean } = {}) {
   if (activeTaskExecutions.has(taskId)) return
   activeTaskExecutions.add(taskId)
+  clearServerRecoveryTimer(taskId)
 
   const { settings } = useStore.getState()
   const task = useStore.getState().tasks.find((t) => t.id === taskId)
@@ -3781,6 +3867,14 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
         customRecoverable: true,
       })
       scheduleCustomRecovery(taskId)
+    } else if (latestTask.serverTaskId && isNetworkRecoverableError(err)) {
+      // 查询服务端任务时短暂断网，任务本身仍在服务端执行，保持 running 并稍后重试。
+      updateTaskInStore(taskId, {
+        error: null,
+        finishedAt: null,
+        elapsed: null,
+      })
+      scheduleServerRecovery(taskId)
     } else {
       let errorMessage = err instanceof Error ? err.message : String(err)
       const settings = useStore.getState().settings
@@ -4220,6 +4314,7 @@ async function removeTasks(taskIds: string[], updateState?: TaskDeletionStateUpd
     if (controller) deletedActiveAgentTasks.set(task.id, { task, controller })
     clearFalRecoveryTimer(task.id)
     clearCustomRecoveryTimer(task.id)
+    clearServerRecoveryTimer(task.id)
     clearOpenAIWatchdogTimer(task.id)
   }
 
