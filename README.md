@@ -348,7 +348,7 @@ npm run deploy:cf
 | `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
 | `HOST` / `PORT` | Nginx 监听地址和端口，默认 `0.0.0.0:80` |
 
-默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，1K 图像使用 `https://ai-pixel.online/v1` 的 `gpt-image-2`，大于 1K 的 2K/4K 图像使用 `https://direct.linkai.pics/v1` 的 `gpt-image-2`。画廊/Studio 图像请求由容器后台异步执行，浏览器切换页面不会中断；浏览器只访问同源接口，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
+默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，1K/2K/4K 图像统一使用 `https://direct.linkai.pics/v1` 的 `gpt-image-2`。画廊/Studio 图像请求由容器后台异步执行，浏览器切换页面不会中断；浏览器只访问同源接口，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
 
 推荐把密钥和三个上游地址写入服务器文件 `deploy/api-config.env.example` 对应的配置文件，再只读挂载到容器：
 

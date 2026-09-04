@@ -20,7 +20,7 @@
 ## 服务端固定模型与按分辨率路由（2026-09-04）
 
 - 待确认：当前项目是 React/Vite 静态前端，需检查 Docker/Nginx 是否已有同源动态配置或代理入口；仅用 Vite 环境变量会把 API Key 编译进客户端，不是真正的服务端密钥托管。
-- 需求路由：聊天 `https://ai-pixel.online/v1` + `gpt-5.6-luna`；1K 生图 `https://ai-pixel.online/v1` + `gpt-image-2`；4K 生图 `https://direct.linkai.pics/v1` + `gpt-image-2`。
+- 需求路由：聊天 `https://ai-pixel.online/v1` + `gpt-5.6-luna`；1K/2K/4K 生图统一使用 `https://direct.linkai.pics/v1` + `gpt-image-2`。
 - Docker 默认启用 `SERVER_MANAGED_API_CONFIG=true`；配置文件由 `/etc/gpt-image-playground/api-config.env` 只读挂载，启动脚本将其值提供给 Nginx 模板，不注入前端资源。
 - 客户端仅保留 `/api-proxy/chat/`、`/api-proxy/image-1k/`、`/api-proxy/image-4k/` 路径；图片像素预算不超过 1,572,864 走 1K，其余显式尺寸（包括 2K/4K）走 4K。
 - 服务端模式下 `normalizeSettings()` 丢弃浏览器持久化的 API Profile/自定义服务商，并固定 Agent 为 hybrid；API Key 弹窗关闭，设置页的 Key 输入只读。

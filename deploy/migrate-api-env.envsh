@@ -24,7 +24,7 @@ if [ "${SERVER_MANAGED_API_CONFIG:-false}" = "true" ]; then
 fi
 
 CHAT_API_URL=${CHAT_API_URL:-https://ai-pixel.online/v1}
-IMAGE_1K_API_URL=${IMAGE_1K_API_URL:-https://ai-pixel.online/v1}
+IMAGE_1K_API_URL=${IMAGE_1K_API_URL:-https://direct.linkai.pics/v1}
 IMAGE_4K_API_URL=${IMAGE_4K_API_URL:-https://direct.linkai.pics/v1}
 CHAT_API_KEY=${CHAT_API_KEY:-${API_KEY:-}}
 IMAGE_1K_API_KEY=${IMAGE_1K_API_KEY:-${API_KEY:-}}
