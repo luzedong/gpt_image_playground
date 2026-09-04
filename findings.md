@@ -1,5 +1,13 @@
 # Findings & Decisions
 
+## 服务端异步生图任务（2026-09-04）
+
+- 当前 `submitTask()` 先写入浏览器 IndexedDB，再由 `executeTask()` 直接调用 `callImageApi()`；Pixel Images API 没有可查询的上游 task ID，切换页面只能依赖重提，无法保证原请求继续运行。
+- 异步边界：Docker 的 `SERVER_MANAGED_API_CONFIG=true` 模式启用同源 `/api-tasks`；Vercel/GitHub Pages 等纯静态部署继续使用原同步链路。
+- 服务端任务服务保存任务 JSON、输入 data URL 和最终结果到持久化目录；前端只提交提示词、参数和图片数据，不提交 API URL、模型或 Key。
+- 服务端按尺寸像素预算选择 `IMAGE_1K_*` 或 `IMAGE_4K_*` 配置，默认调用 Images API；任务 ID 写回 `TaskRecord`，刷新后直接查询原任务，避免重复提交。
+- Agent 的 Responses 文本会话仍是浏览器流式链路；本次异步化覆盖画廊/Studio 的固定图像生成和编辑任务，后续如需 Agent 整轮离线执行需单独设计会话队列。
+
 ## 服务端锁定配置下的流式开关（2026-09-04）
 
 - 根因一：`SettingsModal` 对 `activeProfileLocked` 直接设置流式开关和中间图像数控件为 disabled。

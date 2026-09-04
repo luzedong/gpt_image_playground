@@ -204,7 +204,7 @@ npm run sync:prompt-library
 
 Pixel 编辑文档定义单个 `image` 文件。画廊输入栏可以保留多张参考图；提交 Pixel 编辑请求时会按接口要求发送当前输入图，可选遮罩会以 `mask` PNG 一并上传。
 
-任务状态和输入图片会保存在浏览器本地。fal.ai 与配置了 `task_id + poll` 的异步服务商会在重新打开后继续查询原任务；Pixel 当前公开的是同步 Images 接口，页面刷新或关闭后会保留任务并在重开时自动重新提交。由于上游没有可查询的异步任务 ID，这种恢复可能在极端情况下产生重复请求或重复计费。若业务要求浏览器关闭期间仍保证原任务持续运行，需要接入自有后端任务队列。
+任务状态和输入图片会保存在浏览器本地。Docker 服务端固定模式下，画廊/Studio 的图像任务会先进入服务端异步队列，浏览器只轮询任务状态，切换页面或关闭浏览器后任务仍会继续执行；任务结果保存在服务端任务目录，并在重新打开后同步回画廊。fal.ai 与配置了 `task_id + poll` 的异步服务商继续使用原有恢复机制。Vercel、GitHub Pages 等纯静态部署没有常驻任务服务，仍使用同步请求。
 
 <a id="preset-config"></a>
 ### 预置配置说明
@@ -343,18 +343,23 @@ npm run deploy:cf
 | `API_CONFIG_FILE` | 服务端配置文件路径，默认 `/etc/gpt-image-playground/api-config.env` |
 | `API_KEY` | 服务端固定模式的统一 Key 兜底值，不会下发到浏览器 |
 | `CHAT_API_KEY` / `IMAGE_1K_API_KEY` / `IMAGE_4K_API_KEY` | 服务端固定模式的分路 Key；未填写时使用 `API_KEY` |
+| `ASYNC_TASK_DATA_DIR` | 服务端异步任务数据目录，默认 `/var/lib/gpt-image-playground/tasks` |
+| `ASYNC_TASK_CONCURRENCY` | 服务端同时执行的图像任务数，默认 `2` |
 | `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
 | `HOST` / `PORT` | Nginx 监听地址和端口，默认 `0.0.0.0:80` |
 
-默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，1K 图像使用 `https://ai-pixel.online/v1` 的 `gpt-image-2`，大于 1K 的 2K/4K 图像使用 `https://direct.linkai.pics/v1` 的 `gpt-image-2`。浏览器只访问同源代理，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
+默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，1K 图像使用 `https://ai-pixel.online/v1` 的 `gpt-image-2`，大于 1K 的 2K/4K 图像使用 `https://direct.linkai.pics/v1` 的 `gpt-image-2`。画廊/Studio 图像请求由容器后台异步执行，浏览器切换页面不会中断；浏览器只访问同源接口，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
 
 推荐把密钥和三个上游地址写入服务器文件 `deploy/api-config.env.example` 对应的配置文件，再只读挂载到容器：
 
 ```bash
 docker run -d -p 8080:80 \
   -v /etc/gpt-image-playground/api-config.env:/etc/gpt-image-playground/api-config.env:ro \
+  -v /var/lib/gpt-image-playground:/var/lib/gpt-image-playground \
   ghcr.io/cooksleep/gpt_image_playground:latest
 ```
+
+建议保留第二个数据卷。它用于保存异步任务和结果，容器重启或升级后服务端可以继续处理未完成任务；没有该数据卷时，容器删除会丢失服务端任务记录。
 
 若只使用一个 Key，在配置文件中填写 `API_KEY` 即可；也可以分别填写 `CHAT_API_KEY`、`IMAGE_1K_API_KEY` 和 `IMAGE_4K_API_KEY`。如需关闭服务端固定模式，可设置 `SERVER_MANAGED_API_CONFIG=false`，恢复旧的客户端 API 配置行为。
 
@@ -411,6 +416,9 @@ services:
       - DEFAULT_API_KEY=sk-你的-Pixel-Key
     ports:
       - "8080:80"
+    volumes:
+      - /etc/gpt-image-playground/api-config.env:/etc/gpt-image-playground/api-config.env:ro
+      - /var/lib/gpt-image-playground:/var/lib/gpt-image-playground
     restart: unless-stopped
 ```
 **更新说明：**

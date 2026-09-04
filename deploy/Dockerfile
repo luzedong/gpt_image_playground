@@ -23,6 +23,8 @@ RUN npm run build
 # ---- Production stage ----
 FROM nginx:alpine
 
+RUN apk add --no-cache nodejs
+
 ENV HOST=0.0.0.0
 ENV PORT=80
 ENV DEFAULT_API_URL=
@@ -41,12 +43,17 @@ ENV IMAGE_4K_API_URL=https://direct.linkai.pics/v1
 ENV CHAT_API_KEY=
 ENV IMAGE_1K_API_KEY=
 ENV IMAGE_4K_API_KEY=
+ENV ASYNC_TASK_DATA_DIR=/var/lib/gpt-image-playground/tasks
+ENV ASYNC_TASK_CONCURRENCY=2
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --chmod=755 deploy/migrate-api-env.envsh /docker-entrypoint.d/05-migrate-api-env.envsh
 COPY --chmod=755 deploy/inject-api-url.sh /docker-entrypoint.d/40-inject-api-url.sh
+COPY --chmod=755 deploy/async-task-server.mjs /opt/gpt-image-playground/async-task-server.mjs
+
+RUN mkdir -p /var/lib/gpt-image-playground/tasks
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "-c", "node /opt/gpt-image-playground/async-task-server.mjs & exec nginx -g 'daemon off;'"]

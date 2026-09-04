@@ -2923,6 +2923,12 @@ async function executeAgentRound(
         params: opts.taskParams,
         inputImageDataUrls: opts.referenceImageDataUrls,
         skipCodexCliSizePrompt: true,
+        serverTaskId: useStore.getState().tasks.find((task) => task.id === opts.taskId)?.serverTaskId,
+        onServerTaskEnqueued: async (request) => {
+          updateTaskInStore(opts.taskId, { serverTaskId: request.taskId })
+          const persistedTask = useStore.getState().tasks.find((task) => task.id === opts.taskId)
+          if (persistedTask) await putTask(persistedTask)
+        },
         onPartialImage: opts.onPartialImage
           ? (partial) => {
               void opts.onPartialImage?.({ image: partial.image, partialImageIndex: partial.partialImageIndex ?? partial.requestIndex })
@@ -3613,6 +3619,7 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
   if (
     taskProvider !== 'fal' &&
     !isAsyncCustomProviderTask(requestSettings, taskProvider, task.inputImageIds.length > 0) &&
+    !task.serverTaskId &&
     !usesConcurrentImageRequests(requestSettings, activeProfile, task.params, task.inputImageIds.length > 0)
   ) {
     scheduleOpenAIWatchdog(taskId, activeProfile.timeout, activeProfile, { fromNow: options.resumed })
@@ -3658,6 +3665,13 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
           customTaskId: request.taskId,
           customRecoverable: false,
         })
+      },
+      serverTaskId: task.serverTaskId,
+      onServerTaskEnqueued: async (request) => {
+        clearOpenAIWatchdogTimer(taskId)
+        updateTaskInStore(taskId, { serverTaskId: request.taskId })
+        const persistedTask = useStore.getState().tasks.find((item) => item.id === taskId)
+        if (persistedTask) await putTask(persistedTask)
       },
       onPartialImage: (partial) => {
         useStore.getState().setTaskStreamPreview(taskId, partial.image, partial.requestIndex)

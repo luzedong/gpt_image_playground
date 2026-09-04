@@ -22,6 +22,9 @@ export interface CallApiOptions {
   skipCodexCliSizePrompt?: boolean
   onFalRequestEnqueued?: (request: { requestId: string; endpoint: string }) => void
   onCustomTaskEnqueued?: (task: { taskId: string }) => void
+  onServerTaskEnqueued?: (task: { taskId: string }) => void | Promise<void>
+  serverTaskId?: string
+  signal?: AbortSignal
   onPartialImage?: (partial: { image: string; partialImageIndex?: number; requestIndex?: number }) => void
 }
 
