@@ -158,8 +158,8 @@ Phase 18: Agent 续答断线恢复（进行中）
 - [x] 识别图片完成后的 Agent Responses 续答断线
 - [x] 保留轮次并在页面恢复后重试续答
 - [x] 增加续答 499 回归测试
-- [ ] 完成构建、全量测试、推送和远端部署验证
-- **Status:** in_progress
+- [x] 完成构建、全量测试、推送和远端部署验证
+- **Status:** complete
 
 ## Key Questions
 
