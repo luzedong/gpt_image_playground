@@ -701,7 +701,17 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     : [legacyProfile]
 
   if (isServerManagedApiConfigEnabled()) {
-    normalizedProfiles = createDefaultPixelProfiles()
+    const defaultProfiles = createDefaultPixelProfiles()
+    normalizedProfiles = defaultProfiles.map((profile) => {
+      const existing = normalizedProfiles.find((item) => item.id === profile.id)
+      if (!existing) return profile
+      return {
+        ...profile,
+        // 服务端固定连接参数，保留用户在浏览器中选择的流式体验偏好。
+        streamImages: existing.streamImages,
+        streamPartialImages: existing.streamPartialImages,
+      }
+    })
   }
 
   const pixelImageProfile = normalizedProfiles.find(isBuiltInPixelImageProfile)

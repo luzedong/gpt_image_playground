@@ -7,19 +7,27 @@ describe('server-managed API configuration', () => {
 
     const { DEFAULT_AGENT_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, normalizeSettings, validateApiProfile } = await import('./apiProfiles')
     const settings = normalizeSettings({
-      profiles: [{
-        id: 'client-profile',
-        name: '客户端配置',
-        provider: 'openai',
-        baseUrl: 'https://client.example.com/v1',
-        apiKey: 'client-key',
-        model: 'client-model',
-        timeout: 600,
-        apiMode: 'images',
-        codexCli: false,
-        apiProxy: false,
-        transparentBackgroundMethod: 'api',
-      }],
+      profiles: [
+        {
+          id: 'client-profile',
+          name: '客户端配置',
+          provider: 'openai',
+          baseUrl: 'https://client.example.com/v1',
+          apiKey: 'client-key',
+          model: 'client-model',
+          timeout: 600,
+          apiMode: 'images',
+          codexCli: false,
+          apiProxy: false,
+          transparentBackgroundMethod: 'api',
+        },
+        {
+          id: 'default-openai',
+          provider: 'openai',
+          streamImages: true,
+          streamPartialImages: 3,
+        },
+      ],
       activeProfileId: 'client-profile',
       agentApiConfigMode: 'off',
       agentTextProfileId: 'client-profile',
@@ -37,6 +45,7 @@ describe('server-managed API configuration', () => {
       agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
     })
     expect(settings.profiles[0]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-image-2', apiProxy: true })
+    expect(settings.profiles[0]).toMatchObject({ streamImages: true, streamPartialImages: 3 })
     expect(settings.profiles[1]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-5.6-luna', apiProxy: true })
     expect(validateApiProfile(settings.profiles[1])).toBeNull()
   })
