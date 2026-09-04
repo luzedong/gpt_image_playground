@@ -4,8 +4,10 @@
 
 - 根因一：`SettingsModal` 对 `activeProfileLocked` 直接设置流式开关和中间图像数控件为 disabled。
 - 根因二：即使绕过 UI，`updateActiveProfile`/`commitActiveProfilePatch` 以及 `enforcePresetConfigPolicy` 仍会拒绝或覆盖锁定 Profile 的流式字段。
+- 根因三：服务端模式的 `normalizeSettings()` 每次保存都会重建默认 Profile，导致开关刚改完就恢复默认值。
 - 修复边界：服务端继续锁定 URL、模型、API 类型、代理和其他部署参数；仅 OpenAI Profile 的 `streamImages`、`streamPartialImages` 作为本地体验偏好允许修改。
 - 默认值暂不改为开启：当前图像请求对 Pixel Images API 不发送流式字段，避免升级后把不支持 SSE 的图像网关误切到流式；Agent Responses Profile 本来已默认开启流式。
+- 线上资源已更新为修复后的构建；已有打开页面可能仍持有旧 JavaScript，需要强制刷新后再操作。
 
 ## 服务端固定模型与按分辨率路由（2026-09-04）
 

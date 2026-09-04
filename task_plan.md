@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 15: 服务端锁定配置下恢复流式开关（进行中）
+Phase 15: 服务端锁定配置下恢复流式开关（已完成）
 
 ## Phases
 

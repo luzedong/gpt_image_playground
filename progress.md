@@ -7,6 +7,7 @@
 - 已补充预置策略回归测试和配置说明。
 - 验证通过：35 个测试文件、542 项测试，生产构建通过，`git diff --check` 通过；提交 `ac3e9b9` 已推送。
 - 远端 `jdy` 已更新并重建 `gpt-image-playground` 容器，5173 返回 HTTP 200，`/etc/gpt-image-playground/api-config.env` 保持只读挂载。
+- 追加修复 `normalizeSettings()` 重建 Profile 时丢失流式偏好的问题；全量测试和构建再次通过，提交 `4a51ae5` 已部署，远端容器健康检查通过。
 
 ## Session: 2026-09-04
 
