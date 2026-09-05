@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AWESOME_PROMPT_DISCLAIMER_URL,
   AWESOME_PROMPT_REPOSITORY,
@@ -20,6 +20,24 @@ interface PromptLibraryPanelProps {
 }
 
 const PAGE_SIZE = 18
+const PROMPT_LIBRARY_VISIBLE_COUNT_KEY = 'gpt-image-playground:prompt-library-visible-count'
+
+function readVisibleCount() {
+  try {
+    const value = Number(window.localStorage.getItem(PROMPT_LIBRARY_VISIBLE_COUNT_KEY))
+    return Number.isInteger(value) && value >= PAGE_SIZE ? value : PAGE_SIZE
+  } catch {
+    return PAGE_SIZE
+  }
+}
+
+function writeVisibleCount(value: number) {
+  try {
+    window.localStorage.setItem(PROMPT_LIBRARY_VISIBLE_COUNT_KEY, String(value))
+  } catch {
+    // 某些隐私模式下 localStorage 不可用，不影响素材库使用。
+  }
+}
 
 function LibraryIcon({ type, className = 'h-4 w-4' }: { type: 'search' | 'refresh' | 'download' | 'external' | 'sparkles' | 'close' | 'eye'; className?: string }) {
   const paths = {
@@ -123,10 +141,11 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
   const [manifest, setManifest] = useState<AwesomePromptManifest | null>(null)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [visibleCount, setVisibleCount] = useState(readVisibleCount)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedCase, setSelectedCase] = useState<AwesomePromptCase | null>(null)
+  const filterInitialized = useRef(false)
 
   useEffect(() => {
     if (!selectedCase) return
@@ -169,8 +188,17 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
   const categories = manifest?.categories ?? []
 
   useEffect(() => {
+    if (!filterInitialized.current) {
+      filterInitialized.current = true
+      return
+    }
     setVisibleCount(PAGE_SIZE)
+    writeVisibleCount(PAGE_SIZE)
   }, [category, query])
+
+  useEffect(() => {
+    writeVisibleCount(visibleCount)
+  }, [visibleCount])
 
   return (
     <div className="space-y-3" data-prompt-library>
