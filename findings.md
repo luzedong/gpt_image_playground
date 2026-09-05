@@ -5,6 +5,7 @@
 - 远端最新三条 Agent 任务均为 `done`，文本有内容但 `progress.outputItems=[]`、`result.images=[]`；因此不是画廊渲染问题，而是服务端在模型调用阶段已经丢失工具调用。
 - Responses SSE 先发送 `response.output_item.done` 的 `function_call`，随后部分上游发送 `response.completed` 且 `response.output=[]`。服务端解析器此前把后者直接作为最终 payload，覆盖了之前收集的工具调用。
 - 修复为按 `id`/输出索引合并每个 SSE 输出项；空的完成快照不再清空之前的 `generate_image` 调用。验证结果恢复为 `function_call`、`function_call_output`、`message` 三类输出，并成功生成 1 张图片。
+- 修复已部署到 `jdy`；旧任务不会被重新执行，新任务会保留完整工具调用链并继续显示生图任务状态。
 
 ## Agent 服务端进度流问题（2026-09-05）
 

@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 22: Agent 流式工具调用丢失修复（进行中）
+Phase 22: Agent 流式工具调用丢失修复（已完成）
 
 ## Phases
 
@@ -188,10 +188,10 @@ Phase 22: Agent 流式工具调用丢失修复（进行中）
 
 ### Phase 22: Agent 流式工具调用丢失修复
 
-- [ ] 修复空 `response.completed.output` 覆盖前序工具调用的问题
-- [ ] 增加函数调用事件、图片生成和最终结果回归验证
-- [ ] 构建、推送并重新部署远端容器
-- **Status:** in_progress
+- [x] 修复空 `response.completed.output` 覆盖前序工具调用的问题
+- [x] 增加函数调用事件、图片生成和最终结果回归验证
+- [x] 构建、推送并重新部署远端容器
+- **Status:** complete
 
 ## Key Questions
 

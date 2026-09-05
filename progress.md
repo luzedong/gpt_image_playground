@@ -1,10 +1,12 @@
 # Progress Log
 
-## Session: 2026-09-05 — Phase 22 进行中
+## Session: 2026-09-05 — Phase 22 完成
 
 - 用户反馈 Agent 只显示正常文字回复，之前的生图工具和生成中任务不见了。
 - 线上任务核对确认：最新任务均已完成，但结果文本存在、`result.images=0`、`result.outputItems=[]`；定位为 SSE 解析器被空 `response.completed.output` 覆盖。
 - 已修复输出项合并逻辑；本地模拟上游以“工具调用事件 + 空完成快照”复现，修复后服务端结果包含 `function_call`、`function_call_output`、`message` 且图片数量为 1。
+- 全量测试 37 个文件、551 项通过，生产构建和 Node 语法检查通过；提交 `e33f740` 已推送。
+- `jdy` 已重建并运行镜像 `sha256:d169291320abff9e137c0193540ac09a9386ab3de3a90d15ce951f79213f69b1`；首页和 `/api-agent-tasks/:id/progress` 返回 200，容器内确认 `stream: true` 与输出合并逻辑生效。
 
 ## Session: 2026-09-05 — Phase 21 完成
 
