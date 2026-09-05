@@ -3447,9 +3447,14 @@ async function executeAgentRound(
         skipCodexCliSizePrompt: true,
         serverTaskId: useStore.getState().tasks.find((task) => task.id === opts.taskId)?.serverTaskId,
         onServerTaskEnqueued: async (request) => {
-          updateTaskInStore(opts.taskId, { serverTaskId: request.taskId })
+          updateTaskInStore(opts.taskId, { serverTaskId: request.taskId, serverTaskStatus: 'queued' })
           const persistedTask = useStore.getState().tasks.find((task) => task.id === opts.taskId)
           if (persistedTask) await putTask(persistedTask)
+        },
+        onServerTaskStatus: (status) => {
+          const latest = useStore.getState().tasks.find((task) => task.id === opts.taskId)
+          if (latest?.serverTaskStatus === status) return
+          updateTaskInStore(opts.taskId, { serverTaskStatus: status })
         },
         onPartialImage: opts.onPartialImage
           ? (partial) => {
@@ -4179,17 +4184,19 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
   }
 
   try {
-    // 获取输入图片 data URLs
+    // 已经创建的服务端任务不再需要重新上传输入图片；恢复时直接查询原任务结果。
     const inputDataUrls: string[] = []
-    for (const imgId of task.inputImageIds) {
-      const dataUrl = await ensureImageCached(imgId)
-      if (!dataUrl) throw new Error('输入图片已不存在')
-      inputDataUrls.push(dataUrl)
-    }
     let maskDataUrl: string | undefined
-    if (task.maskImageId) {
-      maskDataUrl = await ensureImageCached(task.maskImageId)
-      if (!maskDataUrl) throw new Error('遮罩图片已不存在')
+    if (!task.serverTaskId) {
+      for (const imgId of task.inputImageIds) {
+        const dataUrl = await ensureImageCached(imgId)
+        if (!dataUrl) throw new Error('输入图片已不存在')
+        inputDataUrls.push(dataUrl)
+      }
+      if (task.maskImageId) {
+        maskDataUrl = await ensureImageCached(task.maskImageId)
+        if (!maskDataUrl) throw new Error('遮罩图片已不存在')
+      }
     }
 
     const requestPrompt = task.transparentOutput && task.transparentPrompt
@@ -4222,9 +4229,14 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
       serverTaskId: task.serverTaskId,
       onServerTaskEnqueued: async (request) => {
         clearOpenAIWatchdogTimer(taskId)
-        updateTaskInStore(taskId, { serverTaskId: request.taskId })
+        updateTaskInStore(taskId, { serverTaskId: request.taskId, serverTaskStatus: 'queued' })
         const persistedTask = useStore.getState().tasks.find((item) => item.id === taskId)
         if (persistedTask) await putTask(persistedTask)
+      },
+      onServerTaskStatus: (status) => {
+        const latest = useStore.getState().tasks.find((item) => item.id === taskId)
+        if (latest?.serverTaskStatus === status) return
+        updateTaskInStore(taskId, { serverTaskStatus: status })
       },
       onPartialImage: (partial) => {
         useStore.getState().setTaskStreamPreview(taskId, partial.image, partial.requestIndex)
@@ -4284,6 +4296,7 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
       actualParams,
       actualParamsByImage,
       revisedPromptByImage,
+      serverTaskStatus: undefined,
       ...createTaskDonePatch(task, Date.now()),
       falRecoverable: false,
       customRecoverable: false,

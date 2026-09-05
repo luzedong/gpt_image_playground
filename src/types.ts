@@ -198,6 +198,8 @@ export interface TaskRecord {
   customRecoverable?: boolean
   /** 服务端异步图像任务 ID，用于切换页面或重启后继续查询 */
   serverTaskId?: string
+  /** 服务端已完成但本地仍在接收和缓存图片时的状态 */
+  serverTaskStatus?: 'queued' | 'running' | 'done' | 'error'
   /** API 返回的实际生效参数，用于标记与请求值不一致的情况 */
   actualParams?: Partial<TaskParams>
   /** 输出图片对应的实际生效参数，key 为 outputImages 中的图片 id */

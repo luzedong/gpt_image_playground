@@ -297,6 +297,7 @@ export default function TaskCard({
   const showSwipeAction = swipeActionActive
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
+  const isServerImageReady = task.status === 'running' && task.serverTaskStatus === 'done'
   const showRunningTimer = task.status === 'running' || isFalReconnecting || isCustomReconnecting
   const swipeBgClass = showSwipeAction
     ? swipeStartedSelected
@@ -420,26 +421,34 @@ export default function TaskCard({
           )}
           {task.status === 'running' && (!streamPreviewSrc || !streamPreviewLoaded) && (
             <div className="flex flex-col items-center gap-2">
-              <svg
-                className="w-8 h-8 text-blue-400 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              <span className="text-xs text-gray-400 dark:text-gray-500">生成中...</span>
+              {isServerImageReady ? (
+                <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M5 12.5 9.5 17 19 7.5" />
+                </svg>
+              ) : (
+                <svg
+                  className="w-8 h-8 text-blue-400 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              )}
+              <span className={`text-xs ${isServerImageReady ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                {isServerImageReady ? '已生成，正在加载图片...' : '生成中...'}
+              </span>
             </div>
           )}
           {task.status === 'error' && isFalReconnecting && (
@@ -541,8 +550,8 @@ export default function TaskCard({
           <div className="flex-1 min-h-0 mb-2 overflow-hidden">
             {showPendingPrompt ? (
               <div className="leading-relaxed">
-                <p className="text-sm text-gray-700 dark:text-gray-300">正在生成……</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">输入内容将在响应完成时接收</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">{isServerImageReady ? '图片已生成，正在加载……' : '正在生成……'}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{isServerImageReady ? '服务端已完成，正在保存到本地' : '输入内容将在响应完成时接收'}</p>
               </div>
             ) : (
               <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-3">

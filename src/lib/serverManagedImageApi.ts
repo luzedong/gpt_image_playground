@@ -22,8 +22,9 @@ async function readResponse(response: Response): Promise<ServerTaskResponse> {
   }
 }
 
-async function fetchTask(taskId: string, signal: AbortSignal) {
-  const response = await fetch(`${import.meta.env.BASE_URL}api-tasks/${encodeURIComponent(taskId)}`, {
+async function fetchTask(taskId: string, signal: AbortSignal, includeResult = false) {
+  const query = includeResult ? '' : '?meta=1'
+  const response = await fetch(`${import.meta.env.BASE_URL}api-tasks/${encodeURIComponent(taskId)}${query}`, {
     cache: 'no-store',
     signal,
   })
@@ -68,7 +69,19 @@ export async function callServerManagedImageApi(opts: CallApiOptions, profile: A
     const timeoutId = setTimeout(() => controller.abort(), 30_000)
     try {
       const payload = await fetchTask(taskId, controller.signal)
-      if (payload.status === 'done') return ensureResult(payload)
+      if (payload.status) opts.onServerTaskStatus?.(payload.status)
+      if (payload.status === 'done') {
+        // 兼容尚未更新的服务端：旧接口会在状态响应中直接带 result。
+        if (payload.result) return ensureResult(payload)
+        const resultController = new AbortController()
+        const resultTimeoutId = setTimeout(() => resultController.abort(), 120_000)
+        try {
+          const resultPayload = await fetchTask(taskId, resultController.signal, true)
+          return ensureResult(resultPayload)
+        } finally {
+          clearTimeout(resultTimeoutId)
+        }
+      }
       if (payload.status === 'error') throw new Error(getErrorMessage(payload, '服务端异步生图失败'))
     } finally {
       clearTimeout(timeoutId)

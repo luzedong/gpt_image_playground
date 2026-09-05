@@ -27,6 +27,10 @@ describe('server managed image API', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'task-1',
         status: 'done',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'task-1',
+        status: 'done',
         result: { images: ['data:image/png;base64,AAAA'] },
       }), { status: 200 }))
     const enqueued = vi.fn()
@@ -41,7 +45,9 @@ describe('server managed image API', () => {
 
     expect(result.images).toEqual(['data:image/png;base64,AAAA'])
     expect(enqueued).toHaveBeenCalledWith({ taskId: 'task-1' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls[1][0]).toBe('/api-tasks/task-1?meta=1')
+    expect(fetchMock.mock.calls[2][0]).toBe('/api-tasks/task-1')
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       prompt: '一只猫',
       inputImages: [],
@@ -50,6 +56,9 @@ describe('server managed image API', () => {
 
   it('continues polling an existing task after the browser reloads', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      id: 'task-2',
+      status: 'done',
+    }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({
       id: 'task-2',
       status: 'done',
       result: { images: ['data:image/png;base64,BBBB'] },

@@ -264,6 +264,7 @@ export default function DetailModal() {
   const showSourceInfo = Boolean(task.apiProvider || task.apiProfileName || task.apiModel)
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
+  const isServerImageReady = task.status === 'running' && task.serverTaskStatus === 'done'
   const rawImageUrls = task.rawImageUrls ?? []
   const streamPreviewLen = streamPreviewItems.length
   const currentStreamPreviewSrc = activeStreamPreviewSrc
@@ -697,10 +698,19 @@ export default function DetailModal() {
                 </>
               )}
               {task.status === 'running' && streamPreviewLen === 0 && (
-                <svg className="w-10 h-10 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
+                isServerImageReady ? (
+                  <div className="flex flex-col items-center gap-2 text-emerald-500">
+                    <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M5 12.5 9.5 17 19 7.5" />
+                    </svg>
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">已生成，正在加载图片...</span>
+                  </div>
+                ) : (
+                  <svg className="w-10 h-10 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )
               )}
             </>
           )}
@@ -877,8 +887,8 @@ export default function DetailModal() {
             </div>
             {showPendingPrompt ? (
               <div className="mb-4 leading-relaxed">
-                <p className="text-sm text-gray-700 dark:text-gray-300">正在生成……</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">输入内容将在响应完成时接收</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">{isServerImageReady ? '图片已生成，正在加载……' : '正在生成……'}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{isServerImageReady ? '服务端已完成，正在保存到本地' : '输入内容将在响应完成时接收'}</p>
               </div>
             ) : (
               <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">

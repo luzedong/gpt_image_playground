@@ -1068,8 +1068,8 @@ const server = createServer(async (req, res) => {
       json(res, 404, { error: { message: '任务不存在' } })
       return
     }
-    // 完成态需要携带图片结果；运行态仍只返回轻量状态，避免轮询反复传输 base64。
-    json(res, 200, publicTask(task, task.status === 'done'))
+    // 轮询默认只返回轻量状态；前端确认完成后再单独请求图片结果，避免恢复时阻塞在大段 base64 传输。
+    json(res, 200, publicTask(task, url.searchParams.get('meta') !== '1'))
     return
   }
   json(res, 404, { error: { message: 'Not Found' } })
