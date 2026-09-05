@@ -97,4 +97,87 @@ describe('server managed Agent API', () => {
     expect(result.text).toBe('最终完成')
     expect(fetchMock).toHaveBeenCalledTimes(5)
   })
+
+  it('publishes persisted text and image-generation progress before completion', async () => {
+    const progress = vi.fn()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'agent-task-4', status: 'queued' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-4',
+        status: 'running',
+        progress: {
+          revision: 1,
+          imageRevision: 0,
+          text: '我先准备生成',
+          outputItems: [],
+          pendingImages: [],
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-4',
+        status: 'running',
+        progress: {
+          revision: 2,
+          imageRevision: 1,
+          text: '我先准备生成',
+          outputItems: [{ type: 'function_call', call_id: 'call-1', name: 'generate_image', arguments: '{"id":"cover","prompt":"一张封面"}' }],
+          pendingImages: [{ toolCallId: 'call-1', prompt: '一张封面', status: 'running' }],
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-4',
+        status: 'running',
+        progress: {
+          revision: 2,
+          imageRevision: 1,
+          text: '我先准备生成',
+          outputItems: [],
+          pendingImages: [{ toolCallId: 'call-1', prompt: '一张封面', status: 'running' }],
+          images: [{ dataUrl: 'data:image/png;base64,AAAA', toolCallId: 'call-1' }],
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-4',
+        status: 'done',
+        progress: {
+          revision: 3,
+          imageRevision: 1,
+          text: '完成',
+          outputItems: [],
+          pendingImages: [],
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-4',
+        status: 'done',
+        result: { text: '完成', images: [], outputItems: [] },
+      }), { status: 200 }))
+
+    const result = await callServerManagedAgentApi({
+      taskId: 'agent-task-4',
+      input: [],
+      instructions: 'progress',
+      params: DEFAULT_PARAMS,
+      roundIndex: 1,
+      maxToolRounds: 15,
+      enableWebSearch: false,
+      pollIntervalMs: 0,
+      onProgress: progress,
+    })
+
+    expect(result.text).toBe('完成')
+    expect(progress).toHaveBeenCalledTimes(3)
+    expect(progress.mock.calls[0][0].text).toBe('我先准备生成')
+    expect(progress.mock.calls[1][0].pendingImages[0].status).toBe('running')
+    expect(progress.mock.calls[1][0].images[0].dataUrl).toContain('data:image/png')
+    expect(progress.mock.calls[2][0].text).toBe('完成')
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api-agent-tasks',
+      '/api-agent-tasks/agent-task-4?meta=1',
+      '/api-agent-tasks/agent-task-4?meta=1',
+      '/api-agent-tasks/agent-task-4/progress',
+      '/api-agent-tasks/agent-task-4?meta=1',
+      '/api-agent-tasks/agent-task-4/result',
+    ])
+  })
 })

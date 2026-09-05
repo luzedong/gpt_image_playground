@@ -41,6 +41,37 @@ async function loadTask(id) {
   }
 }
 
+function getAgentProgress(task) {
+  return task.progress || {
+    revision: 0,
+    imageRevision: 0,
+    text: '',
+    outputItems: [],
+    pendingImages: [],
+    images: [],
+  }
+}
+
+function getPublicAgentOutputItems(outputItems) {
+  return outputItems.map((item) => {
+    if (item?.type !== 'image_generation_call' || !Object.prototype.hasOwnProperty.call(item, 'result')) return item
+    const { result: _result, ...withoutImageResult } = item
+    return withoutImageResult
+  })
+}
+
+function publicAgentProgress(task, includeImages = false) {
+  const progress = getAgentProgress(task)
+  return {
+    revision: progress.revision,
+    imageRevision: progress.imageRevision,
+    text: progress.text,
+    outputItems: getPublicAgentOutputItems(progress.outputItems),
+    pendingImages: progress.pendingImages,
+    ...(includeImages ? { images: progress.images } : {}),
+  }
+}
+
 function publicTask(task, includeResult = false) {
   return {
     id: task.id,
@@ -49,6 +80,7 @@ function publicTask(task, includeResult = false) {
     updatedAt: task.updatedAt,
     finishedAt: task.finishedAt ?? null,
     error: task.error ?? null,
+    ...(task.kind === 'agent' ? { progress: publicAgentProgress(task) } : {}),
     ...(includeResult && task.result ? { result: task.result } : {}),
   }
 }
@@ -360,7 +392,72 @@ function getAgentResponseOutput(payload) {
   return Array.isArray(payload?.output) ? payload.output.filter((item) => item && typeof item === 'object') : []
 }
 
-async function callAgentUpstream(input, instructions, tools) {
+async function readAgentStreamPayload(response, onTextDelta) {
+  if (!response.body) throw new Error('聊天 API 未返回流式响应体')
+
+  let buffer = ''
+  let completedPayload = null
+  let fallbackOutput = []
+  let fallbackResponseId
+  const decoder = new TextDecoder()
+
+  const processEvent = async (block) => {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim()
+    if (!data || data === '[DONE]') return
+
+    let event
+    try {
+      event = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (event?.error) {
+      throw new Error(event.error.message || event.error.code || '聊天 API 流式响应失败')
+    }
+
+    const type = typeof event?.type === 'string' ? event.type : ''
+    if (type === 'response.output_text.delta' && typeof event.delta === 'string' && event.delta) {
+      await onTextDelta?.(event.delta)
+      return
+    }
+
+    if (event.response && typeof event.response === 'object') {
+      if (typeof event.response.id === 'string') fallbackResponseId = event.response.id
+      if (Array.isArray(event.response.output)) fallbackOutput = event.response.output
+      if (type === 'response.completed') completedPayload = event.response
+      return
+    }
+
+    if (event.item && typeof event.item === 'object') {
+      const outputIndex = Number.isInteger(event.output_index) ? event.output_index : -1
+      if (outputIndex >= 0) {
+        fallbackOutput[outputIndex] = event.item
+      } else {
+        fallbackOutput.push(event.item)
+      }
+    }
+  }
+
+  for await (const chunk of response.body) {
+    buffer += decoder.decode(chunk, { stream: true })
+    const blocks = buffer.split(/\r?\n\r?\n/)
+    buffer = blocks.pop() || ''
+    for (const block of blocks) await processEvent(block)
+  }
+  buffer += decoder.decode()
+  if (buffer.trim()) await processEvent(buffer)
+
+  const payload = completedPayload || { id: fallbackResponseId, output: fallbackOutput.filter(Boolean) }
+  if (!Array.isArray(payload.output)) throw new Error('聊天 API 未返回有效响应')
+  return payload
+}
+
+async function callAgentUpstream(input, instructions, tools, onTextDelta) {
   const baseUrl = (process.env.CHAT_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
   const apiKey = process.env.CHAT_API_KEY || process.env.API_KEY || ''
   const model = process.env.CHAT_MODEL || 'gpt-5.6-luna'
@@ -371,8 +468,11 @@ async function callAgentUpstream(input, instructions, tools) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model, instructions, input, tools, stream: false }),
+    body: JSON.stringify({ model, instructions, input, tools, stream: true }),
   })
+  if (response.ok && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+    return readAgentStreamPayload(response, onTextDelta)
+  }
   const payload = await readApiPayload(response)
   if (!response.ok) throw new Error(payload?.error?.message || `聊天 API 返回 HTTP ${response.status}`)
   if (!Array.isArray(payload?.output)) throw new Error('聊天 API 未返回有效响应')
@@ -437,6 +537,95 @@ function parseAgentFunctionArguments(item) {
   }
 }
 
+function getAgentPendingImages(outputItems, images) {
+  const generatedToolCallIds = new Set(images.map((image) => image.toolCallId).filter(Boolean))
+  const functionOutputs = new Map(
+    outputItems
+      .filter((item) => item?.type === 'function_call_output' && typeof item.call_id === 'string')
+      .map((item) => {
+        try {
+          return [item.call_id, JSON.parse(item.output || '{}')]
+        } catch {
+          return [item.call_id, null]
+        }
+      }),
+  )
+  const pending = []
+
+  for (const item of outputItems) {
+    if (item?.type !== 'function_call' || typeof item.call_id !== 'string') continue
+    const args = parseAgentFunctionArguments(item)
+    if (item.name === 'generate_image') {
+      if (generatedToolCallIds.has(item.call_id)) continue
+      const output = functionOutputs.get(item.call_id)
+      pending.push({
+        toolCallId: item.call_id,
+        prompt: typeof args?.prompt === 'string' ? args.prompt : '',
+        status: output?.status === 'error' ? 'error' : 'running',
+        ...(output?.error ? { error: output.error } : {}),
+      })
+      continue
+    }
+    if (item.name !== 'generate_image_batch') continue
+
+    const output = functionOutputs.get(item.call_id)
+    const outputItemsById = new Map(
+      Array.isArray(output?.images)
+        ? output.images.map((result) => [result.id, result])
+        : [],
+    )
+    for (const [index, batchItem] of (Array.isArray(args?.images) ? args.images : []).entries()) {
+      const itemId = typeof batchItem?.id === 'string' ? batchItem.id : String(index + 1)
+      const toolCallId = `${item.call_id}:${itemId}`
+      if (generatedToolCallIds.has(toolCallId)) continue
+      const result = outputItemsById.get(itemId)
+      pending.push({
+        toolCallId,
+        batchCallId: item.call_id,
+        batchItemId: itemId,
+        prompt: typeof batchItem?.prompt === 'string' ? batchItem.prompt : '',
+        status: result?.status === 'error' ? 'error' : 'running',
+        ...(result?.error ? { error: result.error } : {}),
+      })
+    }
+  }
+  return pending
+}
+
+function createAgentProgressReporter(task) {
+  let lastPersistedAt = 0
+  let saveChain = Promise.resolve()
+
+  const queueSave = () => {
+    saveChain = saveChain.then(() => saveTask(task))
+    return saveChain
+  }
+
+  const report = ({ text, outputItems, images, pendingImages }, force = false) => {
+    const previous = getAgentProgress(task)
+    const nextImages = images ?? previous.images
+    const imageChanged = nextImages.length !== previous.images.length
+    task.progress = {
+      revision: previous.revision + 1,
+      imageRevision: previous.imageRevision + (imageChanged ? 1 : 0),
+      text: text ?? previous.text,
+      outputItems: outputItems ?? previous.outputItems,
+      pendingImages: pendingImages ?? previous.pendingImages,
+      images: nextImages,
+    }
+    task.updatedAt = Date.now()
+    const now = Date.now()
+    if (!force && now - lastPersistedAt < 250) return Promise.resolve()
+    lastPersistedAt = now
+    return queueSave()
+  }
+
+  return {
+    report,
+    flush: () => queueSave(),
+  }
+}
+
 async function executeAgentImage(task, toolCallId, prompt, references, metadata = {}) {
   const cleanPrompt = stripAgentReferenceTags(prompt)
   if (!cleanPrompt) throw new Error('图像提示词不能为空')
@@ -465,15 +654,32 @@ async function executeAgentUpstream(task) {
   const outputItems = []
   const images = []
   const textSegments = []
+  const progress = createAgentProgressReporter(task)
   let responseId
 
   for (let responseRound = 0; responseRound < task.maxToolRounds; responseRound++) {
-    const payload = await callAgentUpstream(input, task.instructions, tools)
+    let streamedText = ''
+    const payload = await callAgentUpstream(input, task.instructions, tools, async (delta) => {
+      streamedText += delta
+      await progress.report({
+        text: [...textSegments, streamedText].filter(Boolean).join('\n\n'),
+        outputItems,
+        images,
+        pendingImages: [],
+      })
+    })
     responseId = typeof payload.id === 'string' ? payload.id : responseId
     const currentOutput = getAgentResponseOutput(payload)
     outputItems.push(...currentOutput)
-    const text = getAgentResponseText(payload)
+    const text = getAgentResponseText(payload) || streamedText.trim()
     if (text) textSegments.push(text)
+
+    await progress.report({
+      text: textSegments.join('\n\n').trim(),
+      outputItems,
+      images,
+      pendingImages: getAgentPendingImages(outputItems, images),
+    }, true)
 
     const functionCalls = currentOutput.filter((item) =>
       item.type === 'function_call' &&
@@ -537,10 +743,18 @@ async function executeAgentUpstream(task) {
     }
 
     outputItems.push(...functionOutputs)
+    await progress.report({
+      text: textSegments.join('\n\n').trim(),
+      outputItems,
+      images,
+      pendingImages: getAgentPendingImages(outputItems, images),
+    }, true)
     input = [...input, ...currentOutput, ...functionOutputs]
     const generatedInput = createAgentGeneratedImagesInput(generatedThisRound)
     if (generatedInput) input.push(generatedInput)
   }
+
+  await progress.flush()
 
   return {
     responseId,
@@ -676,6 +890,14 @@ async function handleCreateAgent(req, res) {
           roundIndex: body.roundIndex,
           maxToolRounds: body.maxToolRounds,
           enableWebSearch: body.enableWebSearch,
+          progress: {
+            revision: 0,
+            imageRevision: 0,
+            text: '',
+            outputItems: [],
+            pendingImages: [],
+            images: [],
+          },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           error: null,
@@ -704,6 +926,7 @@ async function handleCreateAgent(req, res) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   const match = url.pathname.match(/^\/api-tasks\/([a-f0-9-]+)$/i)
+  const agentProgressMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/progress$/)
   const agentResultMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/result$/)
   const agentMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)$/)
   if (req.method === 'POST' && url.pathname === '/api-agent-tasks') {
@@ -721,6 +944,19 @@ const server = createServer(async (req, res) => {
       return
     }
     json(res, 200, publicTask(task, true))
+    return
+  }
+  if (req.method === 'GET' && agentProgressMatch) {
+    const task = await loadTask(agentProgressMatch[1])
+    if (!task || task.kind !== 'agent') {
+      json(res, 404, { error: { message: 'Agent 任务不存在' } })
+      return
+    }
+    json(res, 200, {
+      id: task.id,
+      status: task.status,
+      progress: publicAgentProgress(task, true),
+    })
     return
   }
   if (req.method === 'GET' && agentMatch) {

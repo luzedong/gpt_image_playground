@@ -1,5 +1,12 @@
 # Findings & Decisions
 
+## Agent 服务端进度流问题（2026-09-05）
+
+- 当前服务端 `callAgentUpstream()` 明确发送 `stream: false`，并且客户端 `callServerManagedAgentApi()` 只在 `/result` 完成后返回；因此服务端异步化后，前端没有中间文本或工具状态可以渲染。
+- `executeServerManagedAgentRound()` 在任务完成前只创建空助手消息，`commitServerManagedAgentResult()` 才一次性写入最终文本和图片，正是“完成后对话内容全部显示”的直接原因。
+- 修复方向：服务端读取 Responses SSE，并将文本、当前输出项、待生成图片和已完成图片作为持久化进度快照；状态轮询只取轻量摘要，进度变化时再取包含图片的快照。
+- 前端恢复时复用同一个 `serverTaskId`，将进度文本写入已有助手消息、为工具调用创建 running 图像任务占位，最终结果接口只负责补齐图片和结束轮次。
+
 ## Agent 异步任务超时重构线上验收（2026-09-05）
 
 - 远端 Git 目录已是 `cd98a10`，但仅拉取代码不会改变已运行容器；首次检查发现容器镜像未包含新 `/result` 路由。

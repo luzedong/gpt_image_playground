@@ -48,7 +48,7 @@ import {
 import { callImageApi } from './lib/api'
 import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle, createAgentInstructions, parseBatchImageCallArguments, type AgentApiResultImage } from './lib/agentApi'
 import { buildAgentApiInput, buildAgentContinuationInput } from './lib/agentInputBuilder'
-import { callServerManagedAgentApi } from './lib/serverManagedAgentApi'
+import { callServerManagedAgentApi, type ServerAgentPendingImage, type ServerAgentTaskProgress } from './lib/serverManagedAgentApi'
 import { collectAgentRoundOutputImageSlots, extractAgentReferenceIds, getAgentCurrentReferenceId, getAgentGeneratedImageReferenceId } from './lib/agentImageReferences'
 import { showBrowserNotification } from './lib/browserNotification'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
@@ -2519,6 +2519,62 @@ async function commitServerManagedAgentResult(
   const round = conversation?.rounds.find((item) => item.id === roundId)
   if (!conversation || !round) return
 
+  const taskIds = await storeServerManagedAgentImages(
+    conversationId,
+    roundId,
+    assistantMessageId,
+    startedAt,
+    params,
+    imageProfile,
+    result,
+  )
+  const outputTaskIds = uniqueIds([...round.outputTaskIds, ...taskIds])
+  const content = result.text.trim() || (outputTaskIds.length > 0 ? '图像已生成。' : '')
+  const assistantMessage: AgentMessage = {
+    id: assistantMessageId,
+    role: 'assistant',
+    content,
+    roundId,
+    outputTaskIds,
+    createdAt: Date.now(),
+  }
+  updateAgentConversation(conversationId, (current) => ({
+    ...current,
+    updatedAt: Date.now(),
+    rounds: current.rounds.map((item) => item.id === roundId
+      ? {
+          ...item,
+          assistantMessageId,
+          outputTaskIds,
+          responseId: result.responseId,
+          responseOutput: result.outputItems,
+          status: 'done',
+          error: null,
+          finishedAt: Date.now(),
+        }
+      : item),
+    messages: current.messages.some((message) => message.id === assistantMessageId)
+      ? current.messages.map((message) => message.id === assistantMessageId ? assistantMessage : message)
+      : [...current.messages, assistantMessage],
+  }))
+  await flushAgentConversationsToIndexedDB()
+  useStore.getState().showToast(outputTaskIds.length > 0 ? 'Agent 已生成图片' : 'Agent 已回复', 'success')
+}
+
+async function storeServerManagedAgentImages(
+  conversationId: string,
+  roundId: string,
+  assistantMessageId: string,
+  startedAt: number,
+  params: TaskParams,
+  imageProfile: ApiProfile,
+  result: Pick<Awaited<ReturnType<typeof callServerManagedAgentApi>>, 'images' | 'outputItems' | 'rawResponsePayload'>,
+) {
+  const state = useStore.getState()
+  const conversation = state.agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!conversation || !round) return []
+
   const existingTasks = state.tasks.filter((task) => task.agentConversationId === conversationId && task.agentRoundId === roundId)
   const taskIds: string[] = []
   const resultReferenceImageIds = new Map<string, string>()
@@ -2544,6 +2600,24 @@ async function commitServerManagedAgentResult(
       ...referenceIds.map((referenceId) => resultReferenceImageIds.get(referenceId) ?? '').filter(Boolean),
     ])
     const actualParams = deriveAgentImageActualParams(image.actualParams, stored)
+    if (existingTask) {
+      updateTaskInStore(existingTask.id, {
+        prompt,
+        inputImageIds,
+        maskTargetImageId: round.maskTargetImageId ?? null,
+        maskImageId: round.maskImageId ?? null,
+        outputImages: [stored.id],
+        actualParams,
+        actualParamsByImage: { [stored.id]: actualParams },
+        revisedPromptByImage: image.revisedPrompt ? { [stored.id]: image.revisedPrompt } : undefined,
+        rawResponsePayload: result.rawResponsePayload,
+        ...createTaskDonePatch(existingTask, Date.now()),
+        agentToolAction: image.action,
+      })
+      taskIds.push(existingTask.id)
+      if (image.referenceId) resultReferenceImageIds.set(image.referenceId, stored.id)
+      continue
+    }
     const task: TaskRecord = {
       id: genId(),
       prompt,
@@ -2580,17 +2654,91 @@ async function commitServerManagedAgentResult(
     taskIds.push(task.id)
     if (image.referenceId) resultReferenceImageIds.set(image.referenceId, stored.id)
   }
+  return taskIds
+}
 
-  const outputTaskIds = uniqueIds([...round.outputTaskIds, ...taskIds])
-  const content = result.text.trim() || (outputTaskIds.length > 0 ? '图像已生成。' : '')
-  const assistantMessage: AgentMessage = {
-    id: assistantMessageId,
-    role: 'assistant',
-    content,
-    roundId,
-    outputTaskIds,
-    createdAt: Date.now(),
+async function syncServerManagedAgentProgress(
+  conversationId: string,
+  roundId: string,
+  assistantMessageId: string,
+  startedAt: number,
+  params: TaskParams,
+  imageProfile: ApiProfile,
+  progress: ServerAgentTaskProgress,
+) {
+  const state = useStore.getState()
+  const conversation = state.agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!conversation || !round) return
+
+  const currentTasks = state.tasks.filter((task) => task.agentConversationId === conversationId && task.agentRoundId === roundId)
+  const progressTaskIds: string[] = []
+  for (const pending of progress.pendingImages as ServerAgentPendingImage[]) {
+    const existingTask = currentTasks.find((task) =>
+      task.agentToolCallId === pending.toolCallId &&
+      (pending.batchItemId == null || task.agentBatchItemId === pending.batchItemId),
+    )
+    if (existingTask) {
+      progressTaskIds.push(existingTask.id)
+      if (pending.status === 'error' && existingTask.status === 'running') {
+        updateTaskInStore(existingTask.id, {
+          ...createTaskErrorPatch(existingTask, pending.error || '图像生成失败', Date.now()),
+          falRecoverable: false,
+          customRecoverable: false,
+        })
+      }
+      continue
+    }
+
+    const now = Date.now()
+    const failed = pending.status === 'error'
+    const task: TaskRecord = {
+      id: genId(),
+      prompt: pending.prompt,
+      params: { ...params, n: 1 },
+      apiProvider: imageProfile.provider,
+      apiProfileId: imageProfile.id,
+      apiProfileName: imageProfile.name,
+      apiMode: imageProfile.apiMode,
+      apiModel: imageProfile.model,
+      inputImageIds: round.inputImageIds,
+      maskTargetImageId: round.maskTargetImageId ?? null,
+      maskImageId: round.maskImageId ?? null,
+      outputImages: [],
+      status: failed ? 'error' : 'running',
+      error: failed ? pending.error || '图像生成失败' : null,
+      createdAt: startedAt,
+      finishedAt: failed ? now : null,
+      elapsed: failed ? now - startedAt : null,
+      sourceMode: 'agent',
+      agentConversationId: conversationId,
+      agentRoundId: roundId,
+      agentMessageId: assistantMessageId,
+      agentToolCallId: pending.toolCallId,
+      ...(pending.batchCallId ? { agentBatchCallId: pending.batchCallId } : {}),
+      ...(pending.batchItemId ? { agentBatchItemId: pending.batchItemId } : {}),
+      agentToolAction: 'generate',
+    }
+    useStore.getState().setTasks([task, ...useStore.getState().tasks])
+    await putTask(task)
+    progressTaskIds.push(task.id)
   }
+
+  const imageTaskIds = progress.images?.length
+    ? await storeServerManagedAgentImages(
+        conversationId,
+        roundId,
+        assistantMessageId,
+        startedAt,
+        params,
+        imageProfile,
+        {
+          images: progress.images,
+          outputItems: progress.outputItems,
+        },
+      )
+    : []
+  const outputTaskIds = uniqueIds([...round.outputTaskIds, ...progressTaskIds, ...imageTaskIds])
   updateAgentConversation(conversationId, (current) => ({
     ...current,
     updatedAt: Date.now(),
@@ -2599,19 +2747,25 @@ async function commitServerManagedAgentResult(
           ...item,
           assistantMessageId,
           outputTaskIds,
-          responseId: result.responseId,
-          responseOutput: result.outputItems,
-          status: 'done',
+          responseOutput: progress.outputItems,
+          status: 'running',
           error: null,
-          finishedAt: Date.now(),
+          finishedAt: null,
         }
       : item),
     messages: current.messages.some((message) => message.id === assistantMessageId)
-      ? current.messages.map((message) => message.id === assistantMessageId ? assistantMessage : message)
-      : [...current.messages, assistantMessage],
+      ? current.messages.map((message) => message.id === assistantMessageId
+        ? { ...message, content: progress.text || message.content, outputTaskIds }
+        : message)
+      : [...current.messages, {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: progress.text,
+          roundId,
+          outputTaskIds,
+          createdAt: Date.now(),
+        }],
   }))
-  await flushAgentConversationsToIndexedDB()
-  useStore.getState().showToast(outputTaskIds.length > 0 ? 'Agent 已生成图片' : 'Agent 已回复', 'success')
 }
 
 async function executeServerManagedAgentRound(opts: {
@@ -2654,6 +2808,15 @@ async function executeServerManagedAgentRound(opts: {
     maxToolRounds,
     enableWebSearch: requestSettings.agentWebSearch,
     signal,
+    onProgress: (progress) => syncServerManagedAgentProgress(
+      conversationId,
+      roundId,
+      assistantMessageId,
+      startedAt,
+      params,
+      imageProfile,
+      progress,
+    ),
   })
   if (signal.aborted) throw createAgentAbortError()
   await commitServerManagedAgentResult(

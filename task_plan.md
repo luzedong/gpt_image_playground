@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 20: Agent 异步任务超时重构（已完成）
+Phase 21: Agent 服务端进度流恢复（进行中）
 
 ## Phases
 
@@ -177,6 +177,14 @@ Phase 20: Agent 异步任务超时重构（已完成）
 - [x] 保留 serverTaskId，覆盖旧版中文超时错误的恢复路径
 - [x] 增加回归测试、构建、推送并重新部署
 - **Status:** complete
+
+### Phase 21: Agent 服务端进度流恢复
+
+- [ ] 将服务端 Responses 请求恢复为流式读取，并持久化文本/工具调用进度
+- [ ] 新增轻量进度查询与图片结果增量下载接口
+- [ ] 前端轮询时即时更新助手文本和生图中占位任务，重开后继续展示进度
+- [ ] 增加回归测试、构建、推送并重新部署
+- **Status:** in_progress
 
 ## Key Questions
 

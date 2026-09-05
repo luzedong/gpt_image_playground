@@ -1,10 +1,29 @@
 import type { AgentApiResult } from './agentApi'
 import type { TaskParams } from '../types'
 
+export interface ServerAgentPendingImage {
+  toolCallId: string
+  batchCallId?: string
+  batchItemId?: string
+  prompt: string
+  status: 'running' | 'error'
+  error?: string
+}
+
+export interface ServerAgentTaskProgress {
+  revision: number
+  imageRevision: number
+  text: string
+  outputItems: AgentApiResult['outputItems']
+  pendingImages: ServerAgentPendingImage[]
+  images?: AgentApiResult['images']
+}
+
 type ServerAgentTaskResponse = {
   task_id?: string
   status?: 'queued' | 'running' | 'done' | 'error'
   error?: { message?: string } | string
+  progress?: ServerAgentTaskProgress
   result?: AgentApiResult
 }
 
@@ -109,6 +128,7 @@ export async function callServerManagedAgentApi(opts: {
   enableWebSearch: boolean
   signal?: AbortSignal
   pollIntervalMs?: number
+  onProgress?: (progress: ServerAgentTaskProgress) => void | Promise<void>
 }): Promise<AgentApiResult> {
   const response = await fetch(`${import.meta.env.BASE_URL}api-agent-tasks`, {
     method: 'POST',
@@ -130,12 +150,35 @@ export async function callServerManagedAgentApi(opts: {
     throw new Error(getErrorMessage(created, `创建 Agent 异步任务失败：HTTP ${response.status}`))
   }
 
-  const baseDelayMs = Math.max(0, opts.pollIntervalMs ?? 2_000)
+  const baseDelayMs = Math.max(0, opts.pollIntervalMs ?? 800)
   let retryAttempt = 0
+  let progressRevision = 0
+  let imageRevision = 0
+
+  const publishProgress = async (payload: ServerAgentTaskResponse) => {
+    const progress = payload.progress
+    if (!progress || progress.revision <= progressRevision) return
+
+    if (progress.imageRevision > imageRevision) {
+      const imagePayload = await fetchTask(created.task_id!, opts.signal, '/progress')
+      if (imagePayload.progress) {
+        progressRevision = imagePayload.progress.revision
+        imageRevision = imagePayload.progress.imageRevision
+        await opts.onProgress?.(imagePayload.progress)
+        return
+      }
+    }
+
+    progressRevision = progress.revision
+    imageRevision = progress.imageRevision
+    await opts.onProgress?.(progress)
+  }
+
   while (true) {
     try {
       const payload = await fetchTask(created.task_id, opts.signal, '?meta=1')
       retryAttempt = 0
+      await publishProgress(payload)
       if (payload.status === 'done') {
         let resultRetryAttempt = 0
         while (true) {
