@@ -6,7 +6,7 @@
 - 已应用全部 541 条人工译文；每条案例均保留 `promptOriginal`，当前 `pending=0`、`mixed=0`、`missingOriginal=0`。
 - `scripts/prompt-translations.ndjson` 共 541 行且全部可解析；`git diff --check`、脚本语法检查通过。
 - `npm test -- --run`：37 个测试文件、551 项测试全部通过；`npm run build` 生产构建成功。
-- 当前仅剩交付动作：检查 diff 后提交、推送，并按用户之前要求部署到 `jdy`。
+- 已提交 `ec09697` 并推送到 `origin/main`；`jdy` 已拉取、重建并运行新容器。首页和素材清单接口均返回 200，素材文件权限已修正，任务数据与服务端配置挂载保持不变。
 
 ## Session: 2026-09-05 — Phase 24 进行中
 
