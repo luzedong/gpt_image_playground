@@ -256,6 +256,19 @@ export default function TaskCard({
     const imageId = task.outputImages?.[0]
     let unsubscribe: (() => void) | undefined
 
+    if (task.previewImageUrl) {
+      setThumbSrc(task.previewImageUrl)
+      const preview = new Image()
+      preview.onload = () => {
+        if (cancelled) return
+        if (preview.naturalWidth && preview.naturalHeight) {
+          setCoverRatio(formatImageRatio(preview.naturalWidth, preview.naturalHeight))
+          setCoverSize(`${preview.naturalWidth}×${preview.naturalHeight}`)
+        }
+      }
+      preview.src = task.previewImageUrl
+    }
+
     const applyThumbnail = (thumbnail: { dataUrl: string; width?: number; height?: number }) => {
       if (cancelled) return
       setThumbSrc(thumbnail.dataUrl)
@@ -279,7 +292,7 @@ export default function TaskCard({
       cancelled = true
       unsubscribe?.()
     }
-  }, [task.outputImages])
+  }, [task.outputImages, task.previewImageUrl])
 
   const duration = (() => {
     let seconds: number
@@ -403,23 +416,23 @@ export default function TaskCard({
       <div className="flex h-40">
         {/* 左侧图片区域 */}
         <div className="w-40 min-w-[10rem] h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0">
-          {task.status === 'running' && streamPreviewSrc && (
+          {task.status === 'running' && (streamPreviewSrc || task.previewImageUrl) && (
             <>
               <img
-                src={streamPreviewSrc}
-                className={`h-full w-full object-cover ${streamPreviewLoaded ? '' : 'hidden'}`}
+                src={streamPreviewSrc || task.previewImageUrl}
+                className={`h-full w-full object-cover ${streamPreviewSrc && !streamPreviewLoaded ? 'hidden' : ''}`}
                 alt=""
                 onLoad={() => setStreamPreviewLoaded(true)}
                 onError={() => setStreamPreviewLoaded(false)}
               />
-              {streamPreviewLoaded && (
+              {(streamPreviewLoaded || task.previewImageUrl) && (
                 <span className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm sm:text-xs">
                   预览
                 </span>
               )}
             </>
           )}
-          {task.status === 'running' && (!streamPreviewSrc || !streamPreviewLoaded) && (
+          {task.status === 'running' && ((!streamPreviewSrc && !task.previewImageUrl) || (streamPreviewSrc && !streamPreviewLoaded)) && (
             <div className="flex flex-col items-center gap-2">
               {isServerImageReady ? (
                 <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" aria-hidden="true">

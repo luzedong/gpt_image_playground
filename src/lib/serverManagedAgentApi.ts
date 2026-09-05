@@ -16,23 +16,19 @@ export interface ServerAgentTaskProgress {
   text: string
   outputItems: AgentApiResult['outputItems']
   pendingImages: ServerAgentPendingImage[]
-  images?: AgentApiResult['images']
+  images?: ServerAgentProgressImage[]
 }
 
-type ServerAgentProgressImage = Omit<AgentApiResult['images'][number], 'dataUrl'> & {
+export type ServerAgentProgressImage = Omit<AgentApiResult['images'][number], 'dataUrl'> & {
   dataUrl?: string
   imageUrl?: string
-}
-
-type ServerAgentProgressPayload = Omit<ServerAgentTaskProgress, 'images'> & {
-  images?: ServerAgentProgressImage[]
 }
 
 type ServerAgentTaskResponse = {
   task_id?: string
   status?: 'queued' | 'running' | 'done' | 'error'
   error?: { message?: string } | string
-  progress?: ServerAgentProgressPayload
+  progress?: ServerAgentTaskProgress
   result?: AgentApiResult
 }
 
@@ -58,33 +54,6 @@ async function readResponse(response: Response): Promise<ServerAgentTaskResponse
   } catch {
     return {}
   }
-}
-
-async function readImageDataUrl(url: string, signal: AbortSignal | undefined) {
-  const response = await fetch(`${import.meta.env.BASE_URL}${url.replace(/^\//, '')}`, {
-    cache: 'no-store',
-    signal,
-  })
-  if (!response.ok) throw new Error(`读取生成图片失败：HTTP ${response.status}`)
-  const blob = await response.blob()
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
-    reader.onerror = () => reject(reader.error || new Error('读取生成图片失败'))
-    reader.readAsDataURL(blob)
-  })
-}
-
-async function hydrateProgressImages(progress: ServerAgentProgressPayload, signal: AbortSignal | undefined): Promise<ServerAgentTaskProgress> {
-  if (!progress.images?.length) {
-    const { images: _images, ...rest } = progress
-    return rest
-  }
-  const images = await Promise.all(progress.images.map(async (image) => ({
-    ...image,
-    dataUrl: image.dataUrl || (image.imageUrl ? await readImageDataUrl(image.imageUrl, signal) : ''),
-  })))
-  return { ...progress, images }
 }
 
 async function fetchTask(taskId: string, signal: AbortSignal | undefined, path: string) {
@@ -200,14 +169,14 @@ export async function callServerManagedAgentApi(opts: {
       if (imagePayload.progress) {
         progressRevision = imagePayload.progress.revision
         imageRevision = imagePayload.progress.imageRevision
-        void opts.onProgress?.(await hydrateProgressImages(imagePayload.progress, opts.signal))
+        void opts.onProgress?.(imagePayload.progress)
         return
       }
     }
 
     progressRevision = progress.revision
     imageRevision = progress.imageRevision
-    void opts.onProgress?.(await hydrateProgressImages(progress, opts.signal))
+    void opts.onProgress?.(progress)
   }
 
   while (true) {

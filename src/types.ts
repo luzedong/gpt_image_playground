@@ -200,6 +200,8 @@ export interface TaskRecord {
   serverTaskId?: string
   /** 服务端已完成但本地仍在接收和缓存图片时的状态 */
   serverTaskStatus?: 'queued' | 'running' | 'done' | 'error'
+  /** 服务端图片已完成、但本地持久化尚未完成时的临时预览地址 */
+  previewImageUrl?: string
   /** API 返回的实际生效参数，用于标记与请求值不一致的情况 */
   actualParams?: Partial<TaskParams>
   /** 输出图片对应的实际生效参数，key 为 outputImages 中的图片 id */

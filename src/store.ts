@@ -2617,6 +2617,8 @@ async function storeServerManagedAgentImages(
         revisedPromptByImage: image.revisedPrompt ? { [stored.id]: image.revisedPrompt } : undefined,
         rawResponsePayload: result.rawResponsePayload,
         ...createTaskDonePatch(existingTask, Date.now()),
+        previewImageUrl: undefined,
+        serverTaskStatus: undefined,
         agentToolAction: image.action,
       })
       taskIds.push(existingTask.id)
@@ -2731,7 +2733,7 @@ async function syncServerManagedAgentProgress(
     progressTaskIds.push(task.id)
   }
 
-  const imageTaskIds = progress.images?.length
+    const imageTaskIds = progress.images?.length
     ? await storeServerManagedAgentImages(
         conversationId,
         roundId,
@@ -2740,11 +2742,24 @@ async function syncServerManagedAgentProgress(
         params,
         imageProfile,
         {
-          images: progress.images,
+          images: progress.images.filter((image): image is typeof image & { dataUrl: string } => Boolean(image.dataUrl)),
           outputItems: progress.outputItems,
         },
       )
     : []
+  for (const image of progress.images ?? []) {
+    if (!image.imageUrl) continue
+    const previewTask = useStore.getState().tasks.find((task) =>
+      image.toolCallId && task.agentToolCallId === image.toolCallId &&
+      (image.batchItemId == null || task.agentBatchItemId === image.batchItemId),
+    )
+    if (previewTask && previewTask.outputImages.length === 0) {
+      updateTaskInStore(previewTask.id, {
+        previewImageUrl: image.imageUrl,
+        serverTaskStatus: 'done',
+      })
+    }
+  }
   const outputTaskIds = uniqueIds([...round.outputTaskIds, ...progressTaskIds, ...imageTaskIds])
   updateAgentConversation(conversationId, (current) => ({
     ...current,
