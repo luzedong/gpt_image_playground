@@ -37,6 +37,7 @@ export interface AwesomePromptLibraryOptions {
 }
 
 let manifestPromise: Promise<AwesomePromptManifest> | null = null
+const AWESOME_PROMPT_MANIFEST_CACHE_KEY = 'gpt-image-playground:prompt-library-manifest'
 
 function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback
@@ -122,6 +123,24 @@ export function filterAwesomePromptCases(cases: AwesomePromptCase[], query: stri
 
 export function clearAwesomePromptManifestCache() {
   manifestPromise = null
+}
+
+export function readAwesomePromptManifestCache() {
+  try {
+    const value = window.localStorage.getItem(AWESOME_PROMPT_MANIFEST_CACHE_KEY)
+    if (!value) return null
+    return normalizeAwesomePromptManifest(JSON.parse(value))
+  } catch {
+    return null
+  }
+}
+
+export function writeAwesomePromptManifestCache(manifest: AwesomePromptManifest) {
+  try {
+    window.localStorage.setItem(AWESOME_PROMPT_MANIFEST_CACHE_KEY, JSON.stringify(manifest))
+  } catch {
+    // 存储空间不足或隐私模式禁用时，仍可正常使用网络素材库。
+  }
 }
 
 export async function fetchAwesomePromptManifest(options: AwesomePromptLibraryOptions = {}) {

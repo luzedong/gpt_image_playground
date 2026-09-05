@@ -6,6 +6,8 @@ import {
   fetchAwesomePromptManifest,
   getAwesomePromptImageUrl,
   normalizeAwesomePromptManifest,
+  readAwesomePromptManifestCache,
+  writeAwesomePromptManifestCache,
 } from './awesomePromptLibrary'
 
 const manifest = {
@@ -72,6 +74,20 @@ describe('awesomePromptLibrary', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 503 }))
 
     await expect(fetchAwesomePromptManifest({ fetchImpl })).rejects.toThrow('素材库请求失败：HTTP 503')
+  })
+
+  it('persists and restores the manifest from browser storage', () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('window', { localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    } })
+
+    const normalized = normalizeAwesomePromptManifest(manifest)
+    writeAwesomePromptManifestCache(normalized)
+    expect(readAwesomePromptManifestCache()?.cases).toHaveLength(2)
+
+    vi.unstubAllGlobals()
   })
 
   it('aborts a request that exceeds the configured timeout', async () => {

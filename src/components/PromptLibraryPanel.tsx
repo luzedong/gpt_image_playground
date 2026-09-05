@@ -6,6 +6,8 @@ import {
   fetchAwesomePromptManifest,
   filterAwesomePromptCases,
   getAwesomePromptImageUrl,
+  readAwesomePromptManifestCache,
+  writeAwesomePromptManifestCache,
   type AwesomePromptCase,
   type AwesomePromptManifest,
 } from '../lib/awesomePromptLibrary'
@@ -136,10 +138,18 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
   }, [selectedCase])
 
   const loadManifest = useCallback(async () => {
-    setLoading(true)
+    const cachedManifest = readAwesomePromptManifestCache()
+    if (cachedManifest) {
+      setManifest(cachedManifest)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError('')
     try {
-      setManifest(await fetchAwesomePromptManifest())
+      const nextManifest = await fetchAwesomePromptManifest()
+      setManifest(nextManifest)
+      writeAwesomePromptManifestCache(nextManifest)
     } catch (err) {
       setError(err instanceof DOMException && err.name === 'AbortError' ? '素材请求超时，请刷新页面或检查部署资源' : err instanceof Error ? err.message : '素材库加载失败')
     } finally {
