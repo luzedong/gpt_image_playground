@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AWESOME_PROMPT_DISCLAIMER_URL,
   AWESOME_PROMPT_REPOSITORY,
   clearAwesomePromptManifestCache,
   fetchAwesomePromptManifest,
@@ -202,17 +201,6 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
 
   return (
     <div className="space-y-3" data-prompt-library>
-      <div className="rounded-xl border border-violet-200 bg-violet-50/80 p-3 dark:border-violet-400/15 dark:bg-violet-500/[0.06]">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"><LibraryIcon type="sparkles" className="h-4 w-4" /></span>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">GPT-Image Prompt 灵感库</p>
-            <p className="mt-1 text-[10px] leading-4 text-violet-800/70 dark:text-violet-200/60">案例清单与图片由本站提供。使用 Prompt 可直接开始创作，导入图片会读取单张参考图。</p>
-          </div>
-        </div>
-        <p className="mt-2 text-[9px] leading-4 text-gray-500 dark:text-gray-500">案例来自公开社区，仅作灵感预览；请保留来源并遵守<a href={AWESOME_PROMPT_DISCLAIMER_URL} target="_blank" rel="noopener noreferrer" className="ml-1 text-gray-600 underline decoration-gray-400 underline-offset-2 hover:text-gray-900 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200">上游免责声明</a>。</p>
-      </div>
-
       <label className="relative block">
         <span className="sr-only">搜索 Prompt 案例</span>
         <LibraryIcon type="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" />

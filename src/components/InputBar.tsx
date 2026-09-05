@@ -334,6 +334,7 @@ export default function InputBar() {
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
   const [showPromptLibrary, setShowPromptLibrary] = useState(false)
+  const [promptLibraryScrollTop, setPromptLibraryScrollTop] = useState(0)
   const [importingPromptId, setImportingPromptId] = useState<number | null>(null)
   const [showMobileUploadMenu, setShowMobileUploadMenu] = useState(false)
   const [maskPreviewUrl, setMaskPreviewUrl] = useState('')
@@ -482,6 +483,7 @@ export default function InputBar() {
   }, [showPromptLibrary])
 
   const handlePromptLibraryScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    setPromptLibraryScrollTop(event.currentTarget.scrollTop)
     try {
       window.localStorage.setItem(PROMPT_LIBRARY_SCROLL_KEY, String(event.currentTarget.scrollTop))
     } catch {
@@ -1699,13 +1701,33 @@ export default function InputBar() {
                 <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            <div ref={promptLibraryScrollRef} onScroll={handlePromptLibraryScroll} className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
-              <PromptLibraryPanel
-                canImportImage={inputImages.length < API_MAX_IMAGES}
-                importingId={importingPromptId}
-                onImportImage={(item) => void handleImportPromptCase(item)}
-                onUsePrompt={handleUsePromptCase}
-              />
+            <div className="relative min-h-0 flex-1">
+              <div ref={promptLibraryScrollRef} onScroll={handlePromptLibraryScroll} className="h-full overflow-y-auto p-3 sm:p-5">
+                <PromptLibraryPanel
+                  canImportImage={inputImages.length < API_MAX_IMAGES}
+                  importingId={importingPromptId}
+                  onImportImage={(item) => void handleImportPromptCase(item)}
+                  onUsePrompt={handleUsePromptCase}
+                />
+              </div>
+              {promptLibraryScrollTop > 200 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    promptLibraryScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+                    setPromptLibraryScrollTop(0)
+                    try {
+                      window.localStorage.setItem(PROMPT_LIBRARY_SCROLL_KEY, '0')
+                    } catch {
+                      // 某些隐私模式下 localStorage 不可用，不影响回到顶部。
+                    }
+                  }}
+                  className="absolute bottom-5 right-5 z-10 flex h-11 items-center gap-1.5 rounded-full bg-violet-600 px-4 text-xs font-semibold text-white shadow-lg shadow-violet-900/20 transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/70"
+                  aria-label="回到素材库顶部"
+                >
+                  <span aria-hidden="true">↑</span>回到顶部
+                </button>
+              )}
             </div>
           </div>
         </div>,
