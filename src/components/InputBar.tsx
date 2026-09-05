@@ -28,6 +28,7 @@ import InputParamsPanel from './input/inputParamsPanel'
 
 /** API 支持的最大参考图数量 */
 const API_MAX_IMAGES = 16
+const LIBRARY_PROMPT_SESSION_KEY = 'gpt-image-playground:library-prompt'
 
 function getFavoriteCollectionTasksForBatch(collectionId: string, tasks: TaskRecord[], defaultFavoriteCollectionId: string | null) {
   const favoriteTasks = tasks.filter((task) => task.isFavorite)
@@ -355,6 +356,17 @@ export default function InputBar() {
   const [cursorPos, setCursorPos] = useState(0)
   const [menuLeft, setMenuLeft] = useState(0)
   const showPromptExpand = promptExpanded || promptCanExpand
+
+  useEffect(() => {
+    try {
+      const libraryPrompt = window.sessionStorage.getItem(LIBRARY_PROMPT_SESSION_KEY)
+      if (!libraryPrompt) return
+      window.sessionStorage.removeItem(LIBRARY_PROMPT_SESSION_KEY)
+      if (prompt === libraryPrompt) setPrompt('')
+    } catch {
+      // 某些隐私模式下 sessionStorage 不可用，不影响输入框使用。
+    }
+  }, [])
 
   const updateInputBarClearance = useCallback(() => {
     const bar = cardRef.current?.closest<HTMLElement>('[data-input-bar]')
@@ -849,6 +861,11 @@ export default function InputBar() {
   handleFilesRef.current = handleFiles
 
   const handleUsePromptCase = (item: AwesomePromptCase) => {
+    try {
+      window.sessionStorage.setItem(LIBRARY_PROMPT_SESSION_KEY, item.prompt)
+    } catch {
+      // 某些隐私模式下 sessionStorage 不可用，不影响填入 Prompt。
+    }
     setPrompt(item.prompt)
     setShowPromptLibrary(false)
     window.setTimeout(() => textareaRef.current?.focus(), 0)

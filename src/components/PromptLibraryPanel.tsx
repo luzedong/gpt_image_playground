@@ -98,8 +98,8 @@ function PromptCaseCard({
           <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] text-violet-300">{item.category}</span>
           {item.styles.slice(0, 1).map((style) => <span key={style} className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-white/[0.05]">{style}</span>)}
         </div>
-        <div className="mt-2.5">
-          <button type="button" onClick={onUsePrompt} className="flex h-11 items-center justify-center gap-1 rounded-lg bg-violet-600/90 px-1 text-[10px] font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60" title="将完整 Prompt 填入输入框">
+        <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+          <button type="button" onClick={onUsePrompt} className="flex h-11 w-full items-center justify-center gap-1 rounded-lg bg-violet-600/90 px-1 text-[10px] font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60" title="将完整 Prompt 填入输入框">
             <LibraryIcon type="sparkles" className="h-3.5 w-3.5" />填入 Prompt
           </button>
         </div>
