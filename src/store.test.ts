@@ -1193,6 +1193,37 @@ describe('synchronous task recovery', () => {
     expect(callImageApi).toHaveBeenCalledTimes(1)
   })
 
+  it('does not resubmit a server-managed Agent image placeholder', async () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    const profile = useStore.getState().settings.profiles[0]
+    const pendingAgentTask = task({
+      id: 'server-agent-placeholder',
+      apiProvider: 'openai',
+      apiProfileId: profile.id,
+      apiProfileName: profile.name,
+      apiModel: profile.model,
+      status: 'running',
+      error: null,
+      createdAt: Date.now() - 1_000,
+      finishedAt: null,
+      elapsed: null,
+      sourceMode: 'agent',
+      agentConversationId: 'conversation-a',
+      agentRoundId: 'round-a',
+      agentToolCallId: 'image-call-a',
+    })
+    await putDbTask(pendingAgentTask)
+
+    try {
+      await initStore()
+
+      expect(callImageApi).not.toHaveBeenCalled()
+      expect(useStore.getState().tasks.find((item) => item.id === pendingAgentTask.id)?.status).toBe('running')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('does not turn a page-unload network abort into a failed task', async () => {
     const request = deferred<Awaited<ReturnType<typeof callImageApi>>>()
     vi.mocked(callImageApi)

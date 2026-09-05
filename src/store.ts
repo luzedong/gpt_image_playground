@@ -1891,6 +1891,11 @@ export function resumePendingTasks() {
       continue
     }
     if (task.status !== 'running') continue
+    if (
+      isServerManagedApiConfigEnabled() &&
+      isAgentTask(task) &&
+      !task.serverTaskId
+    ) continue
     const profile = getTaskApiProfile(settings, task) ?? (!task.apiProfileId ? getActiveApiProfile(settings) : null)
     if (!profile) {
       updateTaskInStore(task.id, {
