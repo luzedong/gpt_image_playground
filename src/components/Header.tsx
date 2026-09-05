@@ -153,6 +153,22 @@ export default function Header() {
               )}
             </div>}
           </div>
+          <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-0.5 rounded-xl border border-gray-200 bg-gray-100/70 p-1 dark:border-white/[0.08] dark:bg-white/[0.04] sm:hidden">
+            <button
+              type="button"
+              onClick={() => setAppMode('gallery')}
+              className={`rounded-lg px-3.5 py-1.5 text-sm transition-colors ${appMode === 'gallery' ? 'bg-white font-medium text-gray-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
+            >
+              画廊
+            </button>
+            <button
+              type="button"
+              onClick={() => setAppMode('agent')}
+              className={`rounded-lg px-3.5 py-1.5 text-sm transition-colors ${appMode === 'agent' ? 'bg-white font-medium text-gray-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
+            >
+              对话
+            </button>
+          </div>
           {appMode === 'agent' && activeConversation && (
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden sm:flex max-w-[30%]">
               <button
@@ -194,22 +210,6 @@ export default function Header() {
             </button>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-100/70 p-0.5 dark:border-white/[0.08] dark:bg-white/[0.04] sm:hidden">
-              <button
-                type="button"
-                onClick={() => setAppMode('gallery')}
-                className={`rounded-md px-2 py-1 text-xs transition-colors ${appMode === 'gallery' ? 'bg-white font-medium text-gray-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-              >
-                画廊
-              </button>
-              <button
-                type="button"
-                onClick={() => setAppMode('agent')}
-                className={`rounded-md px-2 py-1 text-xs transition-colors ${appMode === 'agent' ? 'bg-white font-medium text-gray-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-              >
-                对话
-              </button>
-            </div>
             {!isPwaInstalled && (
               <div
                 className="relative"
