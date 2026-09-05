@@ -3270,6 +3270,7 @@ async function executeAgentRound(
         actualParamsByImage: { [stored.id]: actualParams },
         revisedPromptByImage: image.revisedPrompt ? { [stored.id]: image.revisedPrompt } : undefined,
         rawResponsePayload,
+        serverTaskStatus: undefined,
         ...createTaskDonePatch(latestBeforeUpdate, Date.now()),
         agentToolAction: image.action,
       })
