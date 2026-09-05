@@ -1,31 +1,26 @@
 import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { addImageFromFile, addImageFromUrl, deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
-import { DEFAULT_PARAMS, type TaskRecord } from '../types'
+import { type TaskRecord } from '../types'
 import { getActiveAgentRounds } from '../lib/agentConversationState'
 import { getActiveApiProfile, getAgentImageApiProfile, normalizeSettings } from '../lib/apiProfiles'
 import { isServerManagedApiConfigEnabled } from '../lib/devProxy'
 import { ensureImageCached, getCachedImage } from '../lib/imageCache'
-import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
+import { getChangedParams, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
-import { normalizeCodexCliImageSize, normalizeImageSize } from '../lib/size'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { getSafeBoundingClientRect } from '../lib/domRect'
 import { collectAgentRoundOutputImageSlots } from '../lib/agentImageReferences'
 import { ALL_FAVORITES_COLLECTION_ID, getTaskFavoriteCollectionIds } from '../lib/favoriteState'
 import { getContentEditableCursor, getContentEditablePlainText, getContentEditableSelection, getMentionTagHtml, setContentEditableCursor, setContentEditableSelection, syncMentionTagSelection } from '../lib/contentEditableMentions'
-import { useHintTooltip } from '../hooks/useHintTooltip'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { downloadImageEntriesAsZip, downloadImageIds, formatExportFileTime, getTaskOutputImageZipEntries } from '../lib/downloadImages'
 import { getAwesomePromptImageUrl, type AwesomePromptCase } from '../lib/awesomePromptLibrary'
-import imageParamsIcon from '../assets/imageParams.svg'
-import SizePickerModal from './SizePickerModal'
 import PromptLibraryPanel from './PromptLibraryPanel'
 import { CloseIcon, CollapseIcon, ExpandIcon } from './icons'
 import ButtonTooltip from './input/buttonTooltip'
 import DragUploadOverlay from './input/dragUploadOverlay'
 import InputBatchBars from './input/inputBatchBars'
-import InputParamsPanel from './input/inputParamsPanel'
 
 /** API 支持的最大参考图数量 */
 const API_MAX_IMAGES = 16
@@ -333,8 +328,6 @@ export default function InputBar() {
   const [attachHover, setAttachHover] = useState(false)
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
-  const [paramsExpanded, setParamsExpanded] = useState(false)
-  const [showSizePicker, setShowSizePicker] = useState(false)
   const [showPromptLibrary, setShowPromptLibrary] = useState(false)
   const [promptLibraryScrollTop, setPromptLibraryScrollTop] = useState(0)
   const [importingPromptId, setImportingPromptId] = useState<number | null>(null)
@@ -424,11 +417,6 @@ export default function InputBar() {
     }
   }, [promptExpanded])
   const imageHintTimerRef = useRef<number | null>(null)
-  const [outputCompressionInput, setOutputCompressionInput] = useState(
-    params.output_compression == null ? '' : String(params.output_compression),
-  )
-  const [nInput, setNInput] = useState(String(params.n))
-  const [nInputFocused, setNInputFocused] = useState(false)
   const dragCounter = useRef(0)
   const isMobile = useIsMobile()
 
@@ -543,52 +531,8 @@ export default function InputBar() {
     syncMentionTagSelection(el)
     setPrompt(getContentEditablePlainText(el))
   }, [setPrompt])
-  const activeProvider = activeProfile.provider
-  const isFalProvider = activeProvider === 'fal'
-  const agentAutoImageCount = appMode === 'agent'
-  const moderationDisabled = isFalProvider
-  const transparentOutputAvailable = appMode === 'gallery'
-  const showTransparentOutputControl = transparentOutputAvailable && (params.output_format === 'png' || params.output_format === 'webp')
-  const transparentOutputEnabled = transparentOutputAvailable && showTransparentOutputControl && params.transparent_output
-  const compressionDisabled = params.output_format === 'png' || isFalProvider
-  const outputImageLimit = getOutputImageLimitForSettings(effectiveSettings)
-  const isFalTextToImage = isFalProvider && inputImages.length === 0
-  const nDraftValue = Number(nInput)
-  const effectiveNValue = Number.isNaN(nDraftValue) ? params.n : nDraftValue
-  const streamConcurrentByN = activeProfile.provider === 'openai' && activeProfile.streamImages === true && !agentAutoImageCount && effectiveNValue > 1
-  const nLimitHintText = agentAutoImageCount
-    ? 'Agent 模式下数量由模型根据提示词自动决定'
-    : isFalProvider
-    ? `fal.ai 最大请求数量为 ${outputImageLimit}`
-    : `OpenAI 最大请求数量为 ${outputImageLimit}`
-  const displaySize = isFalTextToImage && params.size === 'auto'
-    ? DEFAULT_FAL_IMAGE_SIZE
-    : (activeProfile.codexCli ? normalizeCodexCliImageSize(params.size) : normalizeImageSize(params.size)) || DEFAULT_PARAMS.size
-
-  const qualityOptions = isFalProvider
-      ? [
-        { label: 'low', value: 'low' },
-        { label: 'medium', value: 'medium' },
-        { label: 'high', value: 'high' },
-      ]
-    : [
-        { label: 'auto', value: 'auto' },
-        { label: 'low', value: 'low' },
-        { label: 'medium', value: 'medium' },
-        { label: 'high', value: 'high' },
-      ]
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
-  const transparentOutputHint = useHintTooltip()
-  const handleTransparentOutputMenuOpenChange = useCallback((open: boolean) => {
-    if (open) transparentOutputHint.hide()
-  }, [transparentOutputHint.hide])
-  const compressionHint = useHintTooltip({ enabled: () => compressionDisabled })
-  const moderationHint = useHintTooltip({ enabled: () => moderationDisabled })
-  const sizeHint = useHintTooltip({ enabled: () => isFalTextToImage || activeProfile.codexCli })
-  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli || isFalProvider })
-  const nLimitHint = useHintTooltip({ autoHideMs: 2000 })
-  const streamConcurrentHint = useHintTooltip({ enabled: () => streamConcurrentByN })
   const maskTargetImage = maskDraft
     ? inputImages.find((img) => img.id === maskDraft.targetImageId) ?? null
     : null
@@ -709,16 +653,6 @@ export default function InputBar() {
   }, [setPrompt])
 
   useEffect(() => {
-    setOutputCompressionInput(
-      params.output_compression == null ? '' : String(params.output_compression),
-    )
-  }, [params.output_compression])
-
-  useEffect(() => {
-    setNInput(agentAutoImageCount ? 'auto' : String(params.n))
-  }, [agentAutoImageCount, params.n])
-
-  useEffect(() => {
     const normalizedParams = normalizeParamsForSettings(params, effectiveSettings, { hasInputImages: inputImages.length > 0 })
     const patch = getChangedParams(params, normalizedParams)
     if (Object.keys(patch).length) {
@@ -752,86 +686,6 @@ export default function InputBar() {
       cancelled = true
     }
   }, [maskDraft, maskTargetImage?.id, maskTargetImage?.dataUrl])
-
-  const commitOutputCompression = useCallback(() => {
-    if (outputCompressionInput.trim() === '') {
-      setOutputCompressionInput('')
-      setParams({ output_compression: null })
-      return
-    }
-
-    const nextValue = Number(outputCompressionInput)
-    if (Number.isNaN(nextValue)) {
-      setOutputCompressionInput(params.output_compression == null ? '' : String(params.output_compression))
-      return
-    }
-
-    setOutputCompressionInput(String(nextValue))
-    setParams({ output_compression: nextValue })
-  }, [outputCompressionInput, params.output_compression, setParams])
-
-  const commitN = useCallback(() => {
-    nLimitHint.hide()
-    if (agentAutoImageCount) {
-      setNInput('auto')
-      return
-    }
-    const nextValue = Number(nInput)
-    const normalizedValue =
-      nInput.trim() === '' ? DEFAULT_PARAMS.n : Number.isNaN(nextValue) ? params.n : nextValue
-    const clampedValue = Math.min(outputImageLimit, Math.max(1, normalizedValue))
-    setNInput(String(clampedValue))
-    setParams({ n: clampedValue })
-  }, [agentAutoImageCount, nInput, nLimitHint, outputImageLimit, params.n, setParams])
-
-  const showNLimitHint = useCallback(() => {
-    nLimitHint.show()
-  }, [nLimitHint])
-
-  const hideNLimitHint = useCallback(() => {
-    nLimitHint.hide()
-  }, [nLimitHint])
-
-  const showAgentNHint = useCallback(() => {
-    if (agentAutoImageCount) showNLimitHint()
-  }, [agentAutoImageCount, showNLimitHint])
-
-  const clearAgentNHintTouchTimer = useCallback(() => {
-    nLimitHint.clearTimer()
-  }, [nLimitHint])
-
-  const startAgentNHintTouch = useCallback(() => {
-    if (!agentAutoImageCount) return
-    nLimitHint.startTouch()
-  }, [agentAutoImageCount, nLimitHint])
-
-  const handleNInputChange = useCallback((value: string) => {
-    if (agentAutoImageCount) {
-      setNInput('auto')
-      return
-    }
-    setNInput(value)
-    const nextValue = Number(value)
-    if (!Number.isNaN(nextValue) && nextValue > outputImageLimit) {
-      showNLimitHint()
-    } else {
-      hideNLimitHint()
-    }
-  }, [agentAutoImageCount, hideNLimitHint, outputImageLimit, showNLimitHint])
-
-  const handleNLimitIncreaseAttempt = useCallback((preventDefault: () => void) => {
-    if (agentAutoImageCount) {
-      preventDefault()
-      showNLimitHint()
-      return
-    }
-    const currentValue = Number(nInput)
-    const effectiveValue = Number.isNaN(currentValue) ? params.n : currentValue
-    if (!nInputFocused || effectiveValue < outputImageLimit) return
-
-    preventDefault()
-    showNLimitHint()
-  }, [agentAutoImageCount, nInput, nInputFocused, outputImageLimit, params.n, showNLimitHint])
 
   const clearImageHintTimer = () => {
     if (imageHintTimerRef.current != null) {
@@ -1289,8 +1143,6 @@ export default function InputBar() {
     }
   }, [])
 
-  const selectClass = 'px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] text-xs transition-all duration-200 shadow-sm'
-
   const getTouchDropIndex = (touch: React.Touch) => {
     const target = document
       .elementFromPoint(touch.clientX, touch.clientY)
@@ -1621,80 +1473,12 @@ export default function InputBar() {
     )
   }
 
-  const renderParams = (cols: string) => (
-    <InputParamsPanel
-      cols={cols}
-      params={params}
-      setParams={setParams}
-      activeProfile={activeProfile}
-      isFalProvider={isFalProvider}
-      isFalTextToImage={isFalTextToImage}
-      displaySize={displaySize}
-      qualityOptions={qualityOptions}
-      selectClass={selectClass}
-      transparentOutputAvailable={transparentOutputAvailable}
-      showTransparentOutputControl={showTransparentOutputControl}
-      transparentOutputEnabled={transparentOutputEnabled}
-      transparentOutputHint={transparentOutputHint}
-      onTransparentOutputMenuOpenChange={handleTransparentOutputMenuOpenChange}
-      compressionHint={compressionHint}
-      compressionDisabled={compressionDisabled}
-      outputCompressionInput={outputCompressionInput}
-      setOutputCompressionInput={setOutputCompressionInput}
-      commitOutputCompression={commitOutputCompression}
-      moderationHint={moderationHint}
-      moderationDisabled={moderationDisabled}
-      agentAutoImageCount={agentAutoImageCount}
-      outputImageLimit={outputImageLimit}
-      nInput={nInput}
-      setNInputFocused={setNInputFocused}
-      commitN={commitN}
-      handleNInputChange={handleNInputChange}
-      handleNLimitIncreaseAttempt={handleNLimitIncreaseAttempt}
-      showAgentNHint={showAgentNHint}
-      hideNLimitHint={hideNLimitHint}
-      startAgentNHintTouch={startAgentNHintTouch}
-      clearAgentNHintTouchTimer={clearAgentNHintTouchTimer}
-      nLimitHint={nLimitHint}
-      nLimitHintText={nLimitHintText}
-      streamConcurrentByN={streamConcurrentByN}
-      streamConcurrentHint={streamConcurrentHint}
-      sizeHint={sizeHint}
-      qualityHint={qualityHint}
-      onOpenSizePicker={() => setShowSizePicker(true)}
-    />
-  )
-
-  const renderParamsToggle = () => (
-    <button
-      type="button"
-      onClick={() => setParamsExpanded((expanded) => !expanded)}
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-sm transition focus:outline-none focus:ring-1 focus:ring-blue-300/40 ${paramsExpanded ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : 'border-gray-200/60 bg-white/50 hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:bg-white/[0.06]'}`}
-      aria-expanded={paramsExpanded}
-      aria-controls="image-parameters-panel"
-      aria-label="图片参数"
-      title="图片参数"
-    >
-      <img src={imageParamsIcon} alt="" className="h-5 w-5 dark:invert" />
-    </button>
-  )
-
   const showFavoriteCollectionBatchBar = inCollectionOverview && selectedFavoriteCollectionIds.length > 0
   const showTaskBatchBar = !showFavoriteCollectionBatchBar && selectedTaskIds.length > 0
 
   return (
     <>
       <DragUploadOverlay visible={isDragging} atImageLimit={atImageLimit} maxImages={API_MAX_IMAGES} />
-
-      {showSizePicker && (
-        <SizePickerModal
-          currentSize={isFalTextToImage && params.size === 'auto' ? DEFAULT_FAL_IMAGE_SIZE : params.size}
-          onSelect={(size) => setParams({ size })}
-          onClose={() => setShowSizePicker(false)}
-          allowAuto={!isFalTextToImage}
-          codexCli={activeProfile.codexCli}
-        />
-      )}
 
       {showPromptLibrary && createPortal(
         <div
@@ -1953,7 +1737,6 @@ export default function InputBar() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m12 3 1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3L7.5 7.5l3.3-1.2L12 3Zm7 9 .7 1.8 1.8.7-1.8.7L19 17l-.7-1.8-1.8-.7 1.8-.7L19 12ZM5 14l.9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14Z" />
                   </svg>
                 </button>
-                {renderParamsToggle()}
                 <div
                   className="relative"
                   onMouseEnter={() => setAttachHover(true)}
@@ -2005,8 +1788,6 @@ export default function InputBar() {
                 </div>
               </div>
             </div>
-            {paramsExpanded && <div id="image-parameters-panel" className="mt-2">{renderParams('grid-cols-6')}</div>}
-
             {/* 移动端布局 */}
             <div className="sm:hidden flex flex-col gap-2">
               <div className="flex items-center gap-2">
@@ -2084,16 +1865,6 @@ export default function InputBar() {
                           </svg>
                           灵感素材
                         </button>
-                        <button
-                          className="w-full px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2 transition-colors"
-                          onClick={() => {
-                            setShowMobileUploadMenu(false)
-                            setParamsExpanded((expanded) => !expanded)
-                          }}
-                        >
-                          <img src={imageParamsIcon} alt="" className="h-4 w-4 dark:invert" />
-                          图片参数
-                        </button>
                       </div>
                     </>
                   )}
@@ -2129,7 +1900,6 @@ export default function InputBar() {
                   </button>
                 </div>
               </div>
-              {paramsExpanded && <div id="image-parameters-panel" className="pt-1">{renderParams('grid-cols-2')}</div>}
             </div>
           </div>
 

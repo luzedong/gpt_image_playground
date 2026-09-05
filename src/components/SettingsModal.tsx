@@ -60,10 +60,12 @@ import { ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, TrashIcon, GithubIcon, 
 import { TooltipButton } from './TooltipButton'
 import GeneralSettingsTab from './settings/GeneralSettingsTab'
 import AgentSettingsTab from './settings/AgentSettingsTab'
+import ImageGenerationSettingsTab from './settings/ImageGenerationSettingsTab'
 import CustomProviderModal from './settings/CustomProviderModal'
 import ProfileImportUrlModal, { type CopyImportUrlOptions } from './settings/ProfileImportUrlModal'
 import ZipDownloadRouteModal, { ZIP_DOWNLOAD_ROUTE_OPTIONS } from './settings/ZipDownloadRouteModal'
 import MarkdownRenderer from './MarkdownRenderer'
+import imageParamsIcon from '../assets/imageParams.svg'
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -161,6 +163,7 @@ export default function SettingsModal() {
   const setShowSettings = useStore((s) => s.setShowSettings)
   const settings = useStore((s) => s.settings)
   const setSettings = useStore((s) => s.setSettings)
+  const setParams = useStore((s) => s.setParams)
   const dismissPresetProfile = useStore((s) => s.dismissPresetProfile)
   const dismissPresetProvider = useStore((s) => s.dismissPresetProvider)
   const restorePresetProvider = useStore((s) => s.restorePresetProvider)
@@ -1229,6 +1232,13 @@ export default function SettingsModal() {
                 习惯配置
               </button>
               <button
+                onClick={() => setActiveTab('image-generation')}
+                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'image-generation' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+              >
+                <img src={imageParamsIcon} alt="" className="h-4 w-4 opacity-70 dark:invert" />
+                生图配置
+              </button>
+              <button
                 onClick={() => setActiveTab('agent')}
                 className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'agent' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
               >
@@ -1284,6 +1294,14 @@ export default function SettingsModal() {
                 createAgentTextProfile={createAgentTextProfile}
                 commitSettings={commitSettings}
                 commitAgentMaxToolRounds={commitAgentMaxToolRounds}
+              />
+            )}
+
+            {activeTab === 'image-generation' && (
+              <ImageGenerationSettingsTab
+                draft={draft}
+                activeProfile={activeProfile}
+                setParams={setParams}
               />
             )}
             
