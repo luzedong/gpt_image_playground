@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 20: Agent 异步任务超时重构（进行中）
+Phase 20: Agent 异步任务超时重构（已完成）
 
 ## Phases
 
@@ -175,8 +175,8 @@ Phase 20: Agent 异步任务超时重构（进行中）
 - [x] 将 Agent 状态查询与大结果下载拆分，避免移动端状态轮询承载 base64 图片
 - [x] 移除客户端绝对超时并增加断网/页面恢复退避重试
 - [x] 保留 serverTaskId，覆盖旧版中文超时错误的恢复路径
-- [ ] 增加回归测试、构建、推送并重新部署
-- **Status:** in_progress
+- [x] 增加回归测试、构建、推送并重新部署
+- **Status:** complete
 
 ## Key Questions
 
@@ -218,6 +218,9 @@ Phase 20: Agent 异步任务超时重构（进行中）
 | 远端 Git 版本不支持 `branch --show-current` | 1 | 改用 `git symbolic-ref --short HEAD` |
 | 远端未安装 `rg` | 1 | 改用 `grep` 和明确路径检查 |
 | SSH 配置校验命令引号不匹配 | 1 | 改用分层引号重跑，确认配置已加载但不输出 Key |
+| 远端拉取代码后容器仍使用旧镜像 | 1 | 重新构建 `gpt-image-playground:latest` 并按原挂载参数重建容器 |
+| 远端内联 Node 检查命令引号破坏模块名 | 1 | 改用不读取结果正文的 `grep` 字段检查，避免输出任务图片数据 |
+| zsh 通配符未匹配 `Dockerfile*` | 1 | 改用明确文件路径和 `rg --files` 检查 |
 
 ## Notes
 

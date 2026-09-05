@@ -1,5 +1,15 @@
 # Progress Log
 
+## Session: 2026-09-05 — Phase 20 完成
+
+- 发现 `jdy` 的 Git 工作区已是 `cd98a10`，但运行容器仍是旧镜像；容器内没有新的 Agent `meta=1`/`result` 路由。
+- 在 `/root/gpt_image_playground` 重新构建 `gpt-image-playground:latest`，镜像摘要为 `sha256:e3159876d755379b37de67b3af1145707d16c1e90d603f1471e8eee5e7226486`。
+- 重建容器时保留 `unless-stopped`、`5173:80`、只读 API 配置挂载和 `/var/lib/gpt-image-playground` 持久化挂载，没有删除历史任务数据。
+- 线上验证通过：首页 HTTP 200，Node `async-task-server.mjs` 正常运行；`mtnnapen1a5cm?meta=1` 返回 200 且仅 130 bytes，`/result` 返回 200 且结果约 2.49 MB。
+- Nginx Agent 路由已生效并关闭 `proxy_buffering`；远端容器运行新镜像摘要，任务数据仍保留。
+- 本地验证通过：37 个测试文件、550 项测试；`npm run build`、Node 语法检查、部署脚本 shell 检查和 `git diff --check` 均通过。
+- Phase 20 完成。用户侧需对页面执行强制刷新，再重新发起 Agent 生图；切到后台或重新打开对话时应继续使用原服务端任务 ID。
+
 ## Session: 2026-09-05 — Phase 19
 
 - 用户反馈重新部署后 Agent 生图仍失败。
