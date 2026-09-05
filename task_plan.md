@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 19: Agent 生图失败最终定位（已完成）
+Phase 20: Agent 异步任务超时重构（进行中）
 
 ## Phases
 
@@ -168,6 +168,15 @@ Phase 19: Agent 生图失败最终定位（已完成）
 - [x] 增加回归测试并完成构建验证
 - [x] 推送并重新部署，验证线上新资源和任务进程
 - **Status:** complete
+
+### Phase 20: Agent 异步任务超时重构
+
+- [x] 核对线上任务文件、任务完成时间和手机轮询日志，确认后台未真正超时
+- [x] 将 Agent 状态查询与大结果下载拆分，避免移动端状态轮询承载 base64 图片
+- [x] 移除客户端绝对超时并增加断网/页面恢复退避重试
+- [x] 保留 serverTaskId，覆盖旧版中文超时错误的恢复路径
+- [ ] 增加回归测试、构建、推送并重新部署
+- **Status:** in_progress
 
 ## Key Questions
 

@@ -13,6 +13,10 @@ describe('server managed Agent API', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'agent-task-1',
         status: 'done',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-1',
+        status: 'done',
         result: { text: '完成', images: [], outputItems: [{ type: 'message' }] },
       }), { status: 200 }))
 
@@ -24,10 +28,11 @@ describe('server managed Agent API', () => {
       roundIndex: 1,
       maxToolRounds: 15,
       enableWebSearch: false,
+      pollIntervalMs: 0,
     })
 
     expect(result.text).toBe('完成')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       task_id: 'agent-task-1',
       round_index: 1,
@@ -42,6 +47,10 @@ describe('server managed Agent API', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'agent-task-2',
         status: 'done',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-2',
+        status: 'done',
         result: { text: '恢复完成', images: [], outputItems: [] },
       }), { status: 200 }))
 
@@ -53,10 +62,39 @@ describe('server managed Agent API', () => {
       roundIndex: 2,
       maxToolRounds: 15,
       enableWebSearch: false,
+      pollIntervalMs: 0,
     })
 
     expect(result.text).toBe('恢复完成')
     expect(fetchMock.mock.calls[0][0]).toBe('/api-agent-tasks')
-    expect(fetchMock.mock.calls[1][0]).toBe('/api-agent-tasks/agent-task-2')
+    expect(fetchMock.mock.calls[1][0]).toBe('/api-agent-tasks/agent-task-2?meta=1')
+    expect(fetchMock.mock.calls[2][0]).toBe('/api-agent-tasks/agent-task-2/result')
+  })
+
+  it('retries transient status and result failures without a client deadline', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'agent-task-3', status: 'queued' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response('gateway unavailable', { status: 502 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'agent-task-3', status: 'done' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('temporary result failure', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-3',
+        status: 'done',
+        result: { text: '最终完成', images: [], outputItems: [] },
+      }), { status: 200 }))
+
+    const result = await callServerManagedAgentApi({
+      taskId: 'agent-task-3',
+      input: [],
+      instructions: 'resume forever',
+      params: DEFAULT_PARAMS,
+      roundIndex: 1,
+      maxToolRounds: 15,
+      enableWebSearch: false,
+      pollIntervalMs: 0,
+    })
+
+    expect(result.text).toBe('最终完成')
+    expect(fetchMock).toHaveBeenCalledTimes(5)
   })
 })

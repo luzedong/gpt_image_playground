@@ -41,7 +41,7 @@ async function loadTask(id) {
   }
 }
 
-function publicTask(task) {
+function publicTask(task, includeResult = false) {
   return {
     id: task.id,
     status: task.status,
@@ -49,7 +49,7 @@ function publicTask(task) {
     updatedAt: task.updatedAt,
     finishedAt: task.finishedAt ?? null,
     error: task.error ?? null,
-    result: task.result,
+    ...(includeResult && task.result ? { result: task.result } : {}),
   }
 }
 
@@ -704,9 +704,23 @@ async function handleCreateAgent(req, res) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   const match = url.pathname.match(/^\/api-tasks\/([a-f0-9-]+)$/i)
+  const agentResultMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/result$/)
   const agentMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)$/)
   if (req.method === 'POST' && url.pathname === '/api-agent-tasks') {
     await handleCreateAgent(req, res)
+    return
+  }
+  if (req.method === 'GET' && agentResultMatch) {
+    const task = await loadTask(agentResultMatch[1])
+    if (!task || task.kind !== 'agent') {
+      json(res, 404, { error: { message: 'Agent 任务不存在' } })
+      return
+    }
+    if (task.status !== 'done') {
+      json(res, 409, publicTask(task))
+      return
+    }
+    json(res, 200, publicTask(task, true))
     return
   }
   if (req.method === 'GET' && agentMatch) {
@@ -715,7 +729,8 @@ const server = createServer(async (req, res) => {
       json(res, 404, { error: { message: 'Agent 任务不存在' } })
       return
     }
-    json(res, 200, publicTask(task))
+    // 保留默认返回完整结果，兼容已经打开的旧版前端；新版使用 meta=1 避免轮询携带图片。
+    json(res, 200, publicTask(task, url.searchParams.get('meta') !== '1'))
     return
   }
   if (req.method === 'POST' && url.pathname === '/api-tasks') {

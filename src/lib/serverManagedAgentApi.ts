@@ -8,6 +8,16 @@ type ServerAgentTaskResponse = {
   result?: AgentApiResult
 }
 
+class ServerAgentTaskRequestError extends Error {
+  retryable: boolean
+
+  constructor(message: string, retryable: boolean) {
+    super(message)
+    this.name = 'ServerAgentTaskRequestError'
+    this.retryable = retryable
+  }
+}
+
 function getErrorMessage(payload: ServerAgentTaskResponse, fallback: string) {
   if (typeof payload.error === 'string') return payload.error
   if (payload.error?.message) return payload.error.message
@@ -22,26 +32,37 @@ async function readResponse(response: Response): Promise<ServerAgentTaskResponse
   }
 }
 
-async function fetchTask(taskId: string, signal?: AbortSignal) {
+async function fetchTask(taskId: string, signal: AbortSignal | undefined, path: string) {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 30_000)
+  let timedOut = false
+  const timeoutId = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, 30_000)
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}api-agent-tasks/${encodeURIComponent(taskId)}`, {
+    const response = await fetch(`${import.meta.env.BASE_URL}api-agent-tasks/${encodeURIComponent(taskId)}${path}`, {
       cache: 'no-store',
       signal: controller.signal,
     })
     const payload = await readResponse(response)
-    if (!response.ok) throw new Error(getErrorMessage(payload, `查询 Agent 异步任务失败：HTTP ${response.status}`))
+    if (!response.ok) {
+      const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500
+      throw new ServerAgentTaskRequestError(getErrorMessage(payload, `查询 Agent 异步任务失败：HTTP ${response.status}`), retryable)
+    }
+    if (!payload.status) throw new ServerAgentTaskRequestError('服务端 Agent 任务状态响应无效', true)
     return payload
+  } catch (err) {
+    if (timedOut && !signal?.aborted) throw new ServerAgentTaskRequestError('查询 Agent 异步任务超时，稍后重试', true)
+    throw err
   } finally {
     clearTimeout(timeoutId)
     signal?.removeEventListener('abort', abort)
   }
 }
 
-function waitForNextPoll(signal?: AbortSignal) {
+function waitForNextPoll(signal: AbortSignal | undefined, delayMs: number) {
   return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
       reject(new DOMException('Aborted', 'AbortError'))
@@ -50,7 +71,7 @@ function waitForNextPoll(signal?: AbortSignal) {
     const timeoutId = setTimeout(() => {
       signal?.removeEventListener('abort', abort)
       resolve()
-    }, 2_000)
+    }, delayMs)
     const abort = () => {
       clearTimeout(timeoutId)
       signal?.removeEventListener('abort', abort)
@@ -58,6 +79,17 @@ function waitForNextPoll(signal?: AbortSignal) {
     }
     signal?.addEventListener('abort', abort, { once: true })
   })
+}
+
+function isRetryableTaskRequestError(err: unknown) {
+  if (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') return false
+  if (err instanceof ServerAgentTaskRequestError) return err.retryable
+  if (err instanceof TypeError) return /fetch|network|load failed|networkerror/i.test(err.message)
+  return false
+}
+
+function getRetryDelay(attempt: number, baseDelayMs: number) {
+  return Math.min(15_000, baseDelayMs * 2 ** Math.min(attempt, 3))
 }
 
 function ensureResult(payload: ServerAgentTaskResponse): AgentApiResult {
@@ -76,6 +108,7 @@ export async function callServerManagedAgentApi(opts: {
   maxToolRounds: number
   enableWebSearch: boolean
   signal?: AbortSignal
+  pollIntervalMs?: number
 }): Promise<AgentApiResult> {
   const response = await fetch(`${import.meta.env.BASE_URL}api-agent-tasks`, {
     method: 'POST',
@@ -97,13 +130,31 @@ export async function callServerManagedAgentApi(opts: {
     throw new Error(getErrorMessage(created, `创建 Agent 异步任务失败：HTTP ${response.status}`))
   }
 
-  const deadline = Date.now() + 30 * 60 * 1000
-  while (Date.now() < deadline) {
-    const payload = await fetchTask(created.task_id, opts.signal)
-    if (payload.status === 'done') return ensureResult(payload)
-    if (payload.status === 'error') throw new Error(getErrorMessage(payload, '服务端 Agent 异步任务失败'))
-    await waitForNextPoll(opts.signal)
+  const baseDelayMs = Math.max(0, opts.pollIntervalMs ?? 2_000)
+  let retryAttempt = 0
+  while (true) {
+    try {
+      const payload = await fetchTask(created.task_id, opts.signal, '?meta=1')
+      retryAttempt = 0
+      if (payload.status === 'done') {
+        let resultRetryAttempt = 0
+        while (true) {
+          try {
+            const resultPayload = await fetchTask(created.task_id, opts.signal, '/result')
+            return ensureResult(resultPayload)
+          } catch (err) {
+            if (!isRetryableTaskRequestError(err)) throw err
+            await waitForNextPoll(opts.signal, getRetryDelay(resultRetryAttempt, baseDelayMs))
+            resultRetryAttempt += 1
+          }
+        }
+      }
+      if (payload.status === 'error') throw new Error(getErrorMessage(payload, '服务端 Agent 异步任务失败'))
+      await waitForNextPoll(opts.signal, baseDelayMs)
+    } catch (err) {
+      if (!isRetryableTaskRequestError(err)) throw err
+      await waitForNextPoll(opts.signal, getRetryDelay(retryAttempt, baseDelayMs))
+      retryAttempt += 1
+    }
   }
-
-  throw new Error('服务端 Agent 异步任务超时，请稍后重新打开对话')
 }

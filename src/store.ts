@@ -1259,7 +1259,7 @@ function getTaskApiProfileName(task: TaskRecord) {
 function isNetworkRecoverableError(err: unknown) {
   if (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') return true
   const message = err instanceof Error ? err.message : String(err)
-  return /abort|network|failed to fetch|fetch failed|load failed|timeout|连接|断开|中断/i.test(message)
+  return /abort|network|failed to fetch|fetch failed|load failed|timeout|超时|连接|断开|中断|HTTP (?:408|425|429|5\d\d)/i.test(message)
 }
 
 function isApiRequestNetworkError(err: unknown): boolean {
@@ -1390,6 +1390,7 @@ function scheduleAgentRoundRecovery(conversationId: string, roundId: string, del
 function scheduleServerManagedAgentRoundRecovery(conversationId: string, roundId: string, delayMs = SERVER_RECOVERY_POLL_MS) {
   const key = getAgentRoundControllerKey(conversationId, roundId)
   if (agentRoundRecoveryTimers.has(key)) return
+  if (agentRoundControllers.has(key)) return
   const conversation = useStore.getState().agentConversations.find((item) => item.id === conversationId)
   const round = conversation?.rounds.find((item) => item.id === roundId)
   if (!round || round.status !== 'running' || !round.serverTaskId) return

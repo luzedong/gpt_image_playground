@@ -132,14 +132,17 @@ export default function App() {
   useEffect(() => {
     const handlePageHide = () => setPageLifecycleEnding(true)
     const handlePageShow = () => setPageLifecycleEnding(false)
+    const handleVisibilityChange = () => setPageLifecycleEnding(document.visibilityState !== 'visible')
 
     window.addEventListener('beforeunload', handlePageHide)
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       window.removeEventListener('beforeunload', handlePageHide)
       window.removeEventListener('pagehide', handlePageHide)
       window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 
