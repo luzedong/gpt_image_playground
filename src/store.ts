@@ -32,6 +32,7 @@ import {
   clearTasks as dbClearTasks,
   getAllAgentConversations,
   putAgentConversation as dbPutAgentConversation,
+  deleteAgentConversation as dbDeleteAgentConversation,
   replaceAgentConversations,
   clearAgentConversations as dbClearAgentConversations,
   getImage,
@@ -91,6 +92,7 @@ let agentConversationMigrationPending = false
 const AGENT_STOPPED_MESSAGE = '已停止生成。'
 const AGENT_RECOVERY_PAUSE_ERROR = 'AgentRecoveryPauseError'
 const AGENT_CONVERSATION_TITLE_MAX_LENGTH = 28
+const AGENT_CONVERSATION_PERSIST_DEBOUNCE_MS = 800
 const ERROR_TOAST_MAX_LENGTH = 80
 type ToastType = 'info' | 'success' | 'error'
 type AgentDeletionResult = 'deleted' | 'deleted-with-warning' | 'running' | 'not-found'
@@ -1044,8 +1046,13 @@ export const useStore = create<AppState>()(
 let lastStoredAgentConversations = useStore.getState().agentConversations
 let agentConversationPersistRunning = false
 let agentConversationPersistQueued = false
+let agentConversationPersistTimer: ReturnType<typeof setTimeout> | null = null
 
 async function flushAgentConversationsToIndexedDB() {
+  if (agentConversationPersistTimer) {
+    clearTimeout(agentConversationPersistTimer)
+    agentConversationPersistTimer = null
+  }
   if (agentConversationPersistRunning) {
     agentConversationPersistQueued = true
     return
@@ -1056,7 +1063,16 @@ async function flushAgentConversationsToIndexedDB() {
     do {
       agentConversationPersistQueued = false
       const conversations = useStore.getState().agentConversations
-      await replaceStoredAgentConversations(conversations)
+      const previousById = new Map(lastStoredAgentConversations.map((conversation) => [conversation.id, conversation]))
+      const currentIds = new Set(conversations.map((conversation) => conversation.id))
+      await Promise.all([
+        ...conversations
+          .filter((conversation) => previousById.get(conversation.id) !== conversation)
+          .map((conversation) => dbPutAgentConversation(getPersistableAgentConversation(conversation))),
+        ...lastStoredAgentConversations
+          .filter((conversation) => !currentIds.has(conversation.id))
+          .map((conversation) => dbDeleteAgentConversation(conversation.id)),
+      ])
       lastStoredAgentConversations = conversations
     } while (agentConversationPersistQueued || useStore.getState().agentConversations !== lastStoredAgentConversations)
   } finally {
@@ -1070,7 +1086,11 @@ useStore.subscribe((state) => {
     agentConversationPersistQueued = true
     return
   }
-  void flushAgentConversationsToIndexedDB()
+  if (agentConversationPersistTimer) clearTimeout(agentConversationPersistTimer)
+  agentConversationPersistTimer = setTimeout(() => {
+    agentConversationPersistTimer = null
+    void flushAgentConversationsToIndexedDB()
+  }, AGENT_CONVERSATION_PERSIST_DEBOUNCE_MS)
 })
 
 // ===== Actions =====

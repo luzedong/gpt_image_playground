@@ -174,8 +174,8 @@ describe('server managed Agent API', () => {
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       '/api-agent-tasks',
       '/api-agent-tasks/agent-task-4?meta=1',
+      '/api-agent-tasks/agent-task-4/events',
       '/api-agent-tasks/agent-task-4?meta=1',
-      '/api-agent-tasks/agent-task-4/progress',
       '/api-agent-tasks/agent-task-4?meta=1',
       '/api-agent-tasks/agent-task-4/result',
     ])

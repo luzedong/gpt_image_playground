@@ -1,5 +1,6 @@
 import type { AgentApiResult } from './agentApi'
 import type { TaskParams } from '../types'
+import { blobToDataUrl } from './dataUrl'
 
 export interface ServerAgentPendingImage {
   toolCallId: string
@@ -22,6 +23,7 @@ export interface ServerAgentTaskProgress {
 export type ServerAgentProgressImage = Omit<AgentApiResult['images'][number], 'dataUrl'> & {
   dataUrl?: string
   imageUrl?: string
+  mime?: string
 }
 
 type ServerAgentTaskResponse = {
@@ -29,7 +31,7 @@ type ServerAgentTaskResponse = {
   status?: 'queued' | 'running' | 'done' | 'error'
   error?: { message?: string } | string
   progress?: ServerAgentTaskProgress
-  result?: AgentApiResult
+  result?: Omit<AgentApiResult, 'images'> & { images: ServerAgentProgressImage[] }
 }
 
 class ServerAgentTaskRequestError extends Error {
@@ -86,6 +88,60 @@ async function fetchTask(taskId: string, signal: AbortSignal | undefined, path: 
   }
 }
 
+async function listenAgentEvents(
+  taskId: string,
+  signal: AbortSignal | undefined,
+  onPayload: (payload: ServerAgentTaskResponse) => Promise<void>,
+) {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}api-agent-tasks/${encodeURIComponent(taskId)}/events`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+    if (!response.ok || !response.body) {
+      const payload = await readResponse(response)
+      const retryable = response.status === 404 || response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500
+      throw new ServerAgentTaskRequestError(getErrorMessage(payload, `连接 Agent 异步任务失败：HTTP ${response.status}`), retryable)
+    }
+    if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+      throw new ServerAgentTaskRequestError('服务端暂不支持 Agent 事件流，切换到状态轮询', true)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) throw new ServerAgentTaskRequestError('Agent 异步任务流已断开，稍后重试', true)
+      buffer += decoder.decode(value, { stream: true })
+      const blocks = buffer.split(/\r?\n\r?\n/)
+      buffer = blocks.pop() || ''
+      for (const block of blocks) {
+        const data = block
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart())
+          .join('\n')
+          .trim()
+        if (!data) continue
+        const payload = JSON.parse(data) as ServerAgentTaskResponse
+        await onPayload(payload)
+        if (payload.status === 'done' || payload.status === 'error') return payload.status
+      }
+    }
+  } catch (err) {
+    if (controller.signal.aborted && !signal?.aborted) {
+      throw new ServerAgentTaskRequestError('Agent 异步任务流连接超时，稍后重试', true)
+    }
+    throw err
+  } finally {
+    signal?.removeEventListener('abort', abort)
+  }
+}
+
 function waitForNextPoll(signal: AbortSignal | undefined, delayMs: number) {
   return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
@@ -116,11 +172,21 @@ function getRetryDelay(attempt: number, baseDelayMs: number) {
   return Math.min(15_000, baseDelayMs * 2 ** Math.min(attempt, 3))
 }
 
-function ensureResult(payload: ServerAgentTaskResponse): AgentApiResult {
+async function ensureResult(payload: ServerAgentTaskResponse, signal?: AbortSignal): Promise<AgentApiResult> {
   if (!payload.result || !Array.isArray(payload.result.outputItems)) {
     throw new Error('服务端 Agent 任务完成，但没有返回有效响应')
   }
-  return payload.result
+  const images = await Promise.all(payload.result.images.map(async (image) => {
+    if (image.dataUrl) return image as AgentApiResult['images'][number]
+    if (!image.imageUrl) throw new Error('服务端 Agent 任务完成，但图片地址缺失')
+    const response = await fetch(image.imageUrl, { cache: 'force-cache', signal })
+    if (!response.ok) throw new Error(`下载 Agent 生成图片失败：HTTP ${response.status}`)
+    return {
+      ...image,
+      dataUrl: await blobToDataUrl(await response.blob(), image.mime || 'image/png'),
+    } as AgentApiResult['images'][number]
+  }))
+  return { ...payload.result, images }
 }
 
 export async function callServerManagedAgentApi(opts: {
@@ -164,7 +230,7 @@ export async function callServerManagedAgentApi(opts: {
     const progress = payload.progress
     if (!progress || progress.revision <= progressRevision) return
 
-    if (progress.imageRevision > imageRevision) {
+    if (progress.imageRevision > imageRevision && !progress.images) {
       const imagePayload = await fetchTask(created.task_id!, opts.signal, '/progress')
       if (imagePayload.progress) {
         progressRevision = imagePayload.progress.revision
@@ -179,6 +245,40 @@ export async function callServerManagedAgentApi(opts: {
     void opts.onProgress?.(progress)
   }
 
+  let shouldUseEvents = true
+  try {
+    const initialPayload = await fetchTask(created.task_id, opts.signal, '?meta=1')
+    await publishProgress(initialPayload)
+    if (initialPayload.status === 'done') {
+      const resultPayload = await fetchTask(created.task_id, opts.signal, '/result')
+      return ensureResult(resultPayload, opts.signal)
+    }
+    if (initialPayload.status === 'error') throw new Error(getErrorMessage(initialPayload, '服务端 Agent 异步任务失败'))
+  } catch (err) {
+    if (!isRetryableTaskRequestError(err)) throw err
+    shouldUseEvents = false
+  }
+
+  if (shouldUseEvents) {
+    try {
+      const status = await listenAgentEvents(created.task_id, opts.signal, publishProgress)
+      if (status === 'error') throw new Error('服务端 Agent 异步任务失败')
+      let resultRetryAttempt = 0
+      while (true) {
+        try {
+          const resultPayload = await fetchTask(created.task_id, opts.signal, '/result')
+          return ensureResult(resultPayload, opts.signal)
+        } catch (err) {
+          if (!isRetryableTaskRequestError(err)) throw err
+          await waitForNextPoll(opts.signal, getRetryDelay(resultRetryAttempt, baseDelayMs))
+          resultRetryAttempt += 1
+        }
+      }
+    } catch (err) {
+      if (!isRetryableTaskRequestError(err)) throw err
+    }
+  }
+
   while (true) {
     try {
       const payload = await fetchTask(created.task_id, opts.signal, '?meta=1')
@@ -189,7 +289,7 @@ export async function callServerManagedAgentApi(opts: {
         while (true) {
           try {
             const resultPayload = await fetchTask(created.task_id, opts.signal, '/result')
-            return ensureResult(resultPayload)
+            return ensureResult(resultPayload, opts.signal)
           } catch (err) {
             if (!isRetryableTaskRequestError(err)) throw err
             await waitForNextPoll(opts.signal, getRetryDelay(resultRetryAttempt, baseDelayMs))

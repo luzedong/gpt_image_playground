@@ -13,6 +13,7 @@ const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const activeTasks = new Set()
 const pendingTasks = []
 const agentTaskCreationLocks = new Map()
+const agentEventClients = new Map()
 const AGENT_IMAGE_DIR = join(DATA_DIR, 'agent-images')
 
 function json(res, status, payload) {
@@ -28,6 +29,14 @@ function taskPath(id) {
   return join(DATA_DIR, `${id}.json`)
 }
 
+function agentProgressPath(id) {
+  return join(DATA_DIR, `${id}.progress.json`)
+}
+
+function agentContextPath(id) {
+  return join(DATA_DIR, `${id}.context.json`)
+}
+
 function agentImagePath(taskId, index) {
   return join(AGENT_IMAGE_DIR, `${taskId}-${index}.bin`)
 }
@@ -38,16 +47,44 @@ function dataUrlToBuffer(dataUrl) {
   return Buffer.from(match[1], 'base64')
 }
 
-async function saveTask(task) {
-  const path = taskPath(task.id)
+async function writeJsonFile(path, value) {
   const tempPath = `${path}.${process.pid}.tmp`
-  await writeFile(tempPath, JSON.stringify(task), 'utf8')
+  await writeFile(tempPath, JSON.stringify(value), 'utf8')
   await rename(tempPath, path)
+}
+
+async function saveTask(task) {
+  const { progress: _progress, input: _input, instructions: _instructions, ...snapshot } = task
+  await writeJsonFile(taskPath(task.id), snapshot)
+  if (task.kind !== 'agent') return
+  await writeJsonFile(agentProgressPath(task.id), task.progress || getAgentProgress(task))
+}
+
+async function saveAgentContext(task) {
+  if (task.kind !== 'agent') return
+  await writeJsonFile(agentContextPath(task.id), {
+    input: task.input,
+    instructions: task.instructions,
+  })
 }
 
 async function loadTask(id) {
   try {
-    return JSON.parse(await readFile(taskPath(id), 'utf8'))
+    const task = JSON.parse(await readFile(taskPath(id), 'utf8'))
+    if (task.kind !== 'agent') return task
+    try {
+      task.progress = JSON.parse(await readFile(agentProgressPath(id), 'utf8'))
+    } catch {
+      // 兼容拆分存储前的旧任务文件。
+    }
+    try {
+      const context = JSON.parse(await readFile(agentContextPath(id), 'utf8'))
+      task.input ??= context.input
+      task.instructions ??= context.instructions
+    } catch {
+      // 兼容拆分存储前的旧任务文件。
+    }
+    return task
   } catch {
     return null
   }
@@ -89,6 +126,66 @@ function publicAgentProgress(task, includeImages = false) {
   }
 }
 
+function broadcastAgentEvent(task) {
+  const clients = agentEventClients.get(task.id)
+  if (!clients?.size) return
+  const payload = JSON.stringify({
+    id: task.id,
+    status: task.status,
+    progress: publicAgentProgress(task, true),
+  })
+  for (const res of clients) {
+    try {
+      res.write(`event: progress\ndata: ${payload}\n\n`)
+    } catch {
+      clients.delete(res)
+    }
+  }
+}
+
+function addAgentEventClient(task, req, res) {
+  const clients = agentEventClients.get(task.id) || new Set()
+  clients.add(res)
+  agentEventClients.set(task.id, clients)
+  res.write(`event: progress\ndata: ${JSON.stringify({
+    id: task.id,
+    status: task.status,
+    progress: publicAgentProgress(task, true),
+  })}\n\n`)
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': ping\n\n')
+    } catch {
+      clearInterval(heartbeat)
+    }
+  }, 15_000)
+  const cleanup = () => {
+    clearInterval(heartbeat)
+    clients.delete(res)
+    if (!clients.size) agentEventClients.delete(task.id)
+  }
+  req.on('close', cleanup)
+  res.on('close', cleanup)
+}
+
+async function handleAgentEvents(req, res, taskId) {
+  const task = await loadTask(taskId)
+  if (!task || task.kind !== 'agent') {
+    json(res, 404, { error: { message: 'Agent 任务不存在' } })
+    return
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  addAgentEventClient(task, req, res)
+  if (task.status === 'done' || task.status === 'error') {
+    setTimeout(() => res.end(), 0)
+  }
+}
+
 async function persistAgentImages(task, images) {
   await mkdir(AGENT_IMAGE_DIR, { recursive: true })
   await Promise.all(images.map(async (image, index) => {
@@ -104,22 +201,51 @@ async function handleAgentImage(req, res, taskId, index) {
     return
   }
   const image = getAgentProgress(task).images[Number(index)]
-  if (!image?.dataUrl) {
+  if (!image) {
     json(res, 404, { error: { message: '图片不存在' } })
     return
   }
-  const mime = image.mime || image.dataUrl.match(/^data:([^;,]+)/i)?.[1] || 'image/png'
+  const mime = image.mime || image.dataUrl?.match(/^data:([^;,]+)/i)?.[1] || 'image/png'
   try {
     const data = await readFile(agentImagePath(task.id, Number(index)))
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store' })
+    const etag = `"${task.id}-${index}-${data.byteLength}"`
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { ETag: etag, 'Cache-Control': 'public, max-age=31536000, immutable' })
+      res.end()
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Content-Length': data.byteLength,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      ETag: etag,
+    })
     res.end(data)
   } catch {
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store' })
-    res.end(dataUrlToBuffer(image.dataUrl))
+    if (!image.dataUrl) {
+      json(res, 404, { error: { message: '图片资源不存在' } })
+      return
+    }
+    const data = dataUrlToBuffer(image.dataUrl)
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Content-Length': data.byteLength,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    })
+    res.end(data)
   }
 }
 
 function publicTask(task, includeResult = false) {
+  const result = task.kind === 'agent' && task.result
+    ? {
+        ...task.result,
+        images: task.result.images.map((image, index) => {
+          const { dataUrl: _dataUrl, ...metadata } = image
+          return { ...metadata, imageUrl: `/api-agent-tasks/${task.id}/images/${index}` }
+        }),
+      }
+    : task.result
   return {
     id: task.id,
     status: task.status,
@@ -128,7 +254,7 @@ function publicTask(task, includeResult = false) {
     finishedAt: task.finishedAt ?? null,
     error: task.error ?? null,
     ...(task.kind === 'agent' ? { progress: publicAgentProgress(task) } : {}),
-    ...(includeResult && task.result ? { result: task.result } : {}),
+    ...(includeResult && result ? { result } : {}),
   }
 }
 
@@ -741,7 +867,10 @@ function createAgentProgressReporter(task) {
   let saveChain = Promise.resolve()
 
   const queueSave = () => {
-    saveChain = saveChain.then(() => saveTask(task))
+    saveChain = saveChain.then(async () => {
+      await saveTask(task)
+      broadcastAgentEvent(task)
+    })
     return saveChain
   }
 
@@ -758,7 +887,8 @@ function createAgentProgressReporter(task) {
       // 进度快照不能直接引用执行中的数组，否则后续 push 会改写旧快照，导致版本比较失效。
       outputItems: nextOutputItems.map((item) => ({ ...item })),
       pendingImages: nextPendingImages.map((item) => ({ ...item })),
-      images: nextImages.map((image) => ({ ...image })),
+      // 流式快照只保存元数据，原图单独放在 agent-images，避免每个增量重复写入 Base64。
+      images: nextImages.map(({ dataUrl: _dataUrl, ...image }) => ({ ...image })),
     }
     task.updatedAt = Date.now()
     const now = Date.now()
@@ -923,6 +1053,7 @@ async function runTask(task) {
     task.status = 'running'
     task.updatedAt = Date.now()
     await saveTask(task)
+    broadcastAgentEvent(task)
     try {
       task.result = task.kind === 'agent' ? await executeAgentUpstream(task) : await executeUpstream(task)
       task.status = 'done'
@@ -938,6 +1069,8 @@ async function runTask(task) {
     task.finishedAt = Date.now()
     task.updatedAt = task.finishedAt
     await saveTask(task)
+    broadcastAgentEvent(task)
+    if (task.kind === 'agent') await unlink(agentContextPath(task.id)).catch(() => {})
   } catch (error) {
     task.status = 'error'
     task.error = error instanceof Error ? error.message : String(error)
@@ -949,6 +1082,8 @@ async function runTask(task) {
     task.updatedAt = task.finishedAt
     try {
       await saveTask(task)
+      broadcastAgentEvent(task)
+      if (task.kind === 'agent') await unlink(agentContextPath(task.id)).catch(() => {})
     } catch (saveError) {
       console.error('保存异步任务失败', saveError)
     }
@@ -968,11 +1103,17 @@ function pumpQueue() {
 async function cleanupTasks() {
   const now = Date.now()
   for (const name of await readdir(DATA_DIR)) {
-    if (!name.endsWith('.json')) continue
+    if (!name.endsWith('.json') || name.endsWith('.progress.json') || name.endsWith('.context.json')) continue
     const path = join(DATA_DIR, name)
     try {
       const task = JSON.parse(await readFile(path, 'utf8'))
-      if ((task.status === 'done' || task.status === 'error') && now - (task.updatedAt || task.createdAt) > TASK_TTL_MS) await unlink(path)
+      if ((task.status === 'done' || task.status === 'error') && now - (task.updatedAt || task.createdAt) > TASK_TTL_MS) {
+        await unlink(path)
+        await Promise.all([
+          unlink(agentProgressPath(task.id)).catch(() => {}),
+          unlink(agentContextPath(task.id)).catch(() => {}),
+        ])
+      }
     } catch {
       // 忽略单个损坏或正在替换的任务文件。
     }
@@ -981,12 +1122,14 @@ async function cleanupTasks() {
 
 async function restoreTasks() {
   for (const name of await readdir(DATA_DIR)) {
-    if (!name.endsWith('.json')) continue
+    if (!name.endsWith('.json') || name.endsWith('.progress.json') || name.endsWith('.context.json')) continue
     try {
-      const task = JSON.parse(await readFile(join(DATA_DIR, name), 'utf8'))
+      const task = await loadTask(name.slice(0, -'.json'.length))
+      if (!task) continue
       if (task.status === 'queued' || task.status === 'running') {
         task.status = 'queued'
         task.updatedAt = Date.now()
+        await saveAgentContext(task)
         await saveTask(task)
         pendingTasks.push(task)
       }
@@ -1055,6 +1198,7 @@ async function handleCreateAgent(req, res) {
           updatedAt: Date.now(),
           error: null,
         }
+        await saveAgentContext(task)
         await saveTask(task)
         pendingTasks.push(task)
         pumpQueue()
@@ -1080,6 +1224,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   const match = url.pathname.match(/^\/api-tasks\/([a-f0-9-]+)$/i)
   const agentProgressMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/progress$/)
+  const agentEventsMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/events$/)
   const agentResultMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/result$/)
   const agentMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)$/)
   if (req.method === 'POST' && url.pathname === '/api-agent-tasks') {
@@ -1101,6 +1246,10 @@ const server = createServer(async (req, res) => {
       return
     }
     json(res, 200, publicTask(task, true))
+    return
+  }
+  if (req.method === 'GET' && agentEventsMatch) {
+    await handleAgentEvents(req, res, agentEventsMatch[1])
     return
   }
   const agentImageMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/images\/(\d+)$/)

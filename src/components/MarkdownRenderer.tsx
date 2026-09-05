@@ -208,6 +208,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
       }}
       dir="auto"
       isAnimating={streaming}
+      animated={streaming ? { duration: 0, stagger: 0 } : false}
       lineNumbers={false}
       mode={streaming ? 'streaming' : 'static'}
       parseIncompleteMarkdown={streaming}
