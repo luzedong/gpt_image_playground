@@ -565,7 +565,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
         formData.append('mask', maskBlob, 'mask.png')
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy, getImageApiProxyRoute(params.size)), {
+      response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy, getImageApiProxyRoute(params.size, profile.id)), {
         method: 'POST',
         headers: requestHeaders,
         cache: 'no-store',
@@ -608,7 +608,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
         body.partial_images = getStreamPartialImages(profile)
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy, getImageApiProxyRoute(params.size)), {
+      response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy, getImageApiProxyRoute(params.size, profile.id)), {
         method: 'POST',
         headers: {
           ...requestHeaders,
@@ -1046,7 +1046,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       body.stream = true
     }
 
-    const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy, getImageApiProxyRoute(params.size)), {
+  const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy, getImageApiProxyRoute(params.size, profile.id)), {
       method: 'POST',
       headers: {
         ...requestHeaders,

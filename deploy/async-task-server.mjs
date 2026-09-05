@@ -157,6 +157,7 @@ function normalizeTaskInput(input) {
   return {
     prompt,
     params,
+    profileId: body.profileId === 'default-ailink-image' ? 'default-ailink-image' : 'default-openai',
     inputImages,
     maskDataUrl,
     nativeTransparentBackground: body.nativeTransparentBackground === true,
@@ -177,18 +178,26 @@ function isPixelApiUrl(baseUrl) {
   }
 }
 
-function getUpstreamConfig(size) {
+function getUpstreamConfig(size, profileId = '') {
   const isHighResolution = is4K(size)
-  const baseUrl = (isHighResolution
-    ? process.env.IMAGE_4K_API_URL || process.env.API_URL
-    : process.env.IMAGE_1K_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
+  const isAilink = profileId === 'default-ailink-image'
+  const upstreamBaseUrl = isAilink
+    ? (isHighResolution ? process.env.IMAGE_AILINK_4K_API_URL : process.env.IMAGE_AILINK_1K_API_URL)
+    : (isHighResolution ? process.env.IMAGE_PIXEL_4K_API_URL : process.env.IMAGE_PIXEL_1K_API_URL)
+    || (isHighResolution ? process.env.IMAGE_4K_API_URL : process.env.IMAGE_1K_API_URL)
+    || process.env.API_URL || ''
+  const baseUrl = upstreamBaseUrl.replace(/\/+$/, '')
   return {
     baseUrl,
     isPixel: isPixelApiUrl(baseUrl),
-    apiKey: isHighResolution
-      ? process.env.IMAGE_4K_API_KEY || process.env.API_KEY || ''
-      : process.env.IMAGE_1K_API_KEY || process.env.API_KEY || '',
-    model: isHighResolution ? process.env.IMAGE_4K_MODEL || 'gpt-image-2' : process.env.IMAGE_1K_MODEL || 'gpt-image-2',
+    apiKey: isAilink
+      ? (isHighResolution ? process.env.IMAGE_AILINK_4K_API_KEY : process.env.IMAGE_AILINK_1K_API_KEY)
+      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_API_KEY : process.env.IMAGE_PIXEL_1K_API_KEY)
+        || (isHighResolution ? process.env.IMAGE_4K_API_KEY : process.env.IMAGE_1K_API_KEY)
+        || process.env.API_KEY || '',
+    model: isAilink
+      ? (isHighResolution ? process.env.IMAGE_AILINK_4K_MODEL : process.env.IMAGE_AILINK_1K_MODEL) || 'gpt-image-2'
+      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2',
   }
 }
 
@@ -241,7 +250,7 @@ async function normalizeImageResult(payload, outputFormat) {
 }
 
 async function executeUpstream(task) {
-  const config = getUpstreamConfig(task.params.size)
+  const config = getUpstreamConfig(task.params.size, task.profileId)
   if (!config.baseUrl || !config.apiKey) throw new Error('服务端图像 API 配置不完整')
   const headers = { Authorization: `Bearer ${config.apiKey}` }
   const isPixel = config.isPixel
@@ -884,6 +893,7 @@ async function handleCreate(req, res) {
       status: 'queued',
       prompt: body.prompt,
       params: body.params,
+      profileId: body.profileId,
       inputImages: body.inputImages,
       maskDataUrl: body.maskDataUrl,
       nativeTransparentBackground: body.nativeTransparentBackground,

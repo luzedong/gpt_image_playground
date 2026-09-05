@@ -37,6 +37,7 @@ export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-luna'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
+export const DEFAULT_AILINK_PROFILE_ID = 'default-ailink-image'
 export const DEFAULT_AGENT_PROFILE_ID = 'default-pixel-agent'
 export const DEFAULT_API_TIMEOUT = 600
 
@@ -402,6 +403,30 @@ export function createDefaultPixelProfiles(): ApiProfile[] {
   ]
 }
 
+export function createDefaultAilinkProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
+  return createDefaultOpenAIProfile({
+    id: DEFAULT_AILINK_PROFILE_ID,
+    name: 'AILink 图像（1K–4K）',
+    description: '切换后图像使用 AILink；支持 1K–4K。',
+    ...overrides,
+  })
+}
+
+export function createDefaultServerManagedPixelProfiles(): ApiProfile[] {
+  const imageProfile = createDefaultOpenAIProfile({
+    name: 'AIPixel 图像（1K–2K）',
+    description: '图像默认使用 AIPixel；支持 1K–2K。',
+  })
+  return [
+    imageProfile,
+    createDefaultAilinkProfile(),
+    createDefaultAgentProfile({
+      baseUrl: imageProfile.baseUrl,
+      apiKey: imageProfile.apiKey,
+    }),
+  ]
+}
+
 export function createDefaultFalProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
   return {
     id: `fal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
@@ -701,7 +726,9 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     : [legacyProfile]
 
   if (isServerManagedApiConfigEnabled()) {
-    const defaultProfiles = createDefaultPixelProfiles()
+    const defaultProfiles = Array.isArray(record.profiles) && record.profiles.some((profile) => isRecord(profile) && profile.id === DEFAULT_AILINK_PROFILE_ID)
+      ? createDefaultServerManagedPixelProfiles()
+      : createDefaultPixelProfiles()
     normalizedProfiles = defaultProfiles.map((profile) => {
       const existing = normalizedProfiles.find((item) => item.id === profile.id)
       if (!existing) return profile
@@ -797,7 +824,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     agentTextProfileId,
     agentImageProfileId,
     profiles,
-    activeProfileId: isServerManagedApiConfigEnabled() ? DEFAULT_OPENAI_PROFILE_ID : activeProfileId,
+    activeProfileId,
   }
 }
 
@@ -982,13 +1009,14 @@ function hasOnlyDefaultProfiles(settings: AppSettings): boolean {
     settings.activeProfileId === DEFAULT_OPENAI_PROFILE_ID &&
     Boolean(imageProfile && isDefaultOpenAIProfile(imageProfile))
   const pairedProfiles = settings.customProviders.length === 0 &&
-    settings.profiles.length === 2 &&
+    (settings.profiles.length === 2 || settings.profiles.length === 3) &&
     settings.activeProfileId === DEFAULT_OPENAI_PROFILE_ID &&
     settings.agentApiConfigMode === 'hybrid' &&
     settings.agentTextProfileId === DEFAULT_AGENT_PROFILE_ID &&
     settings.agentImageProfileId === DEFAULT_OPENAI_PROFILE_ID &&
     Boolean(imageProfile && isDefaultOpenAIProfile(imageProfile)) &&
-    Boolean(agentProfile && isDefaultAgentProfile(agentProfile))
+    Boolean(agentProfile && isDefaultAgentProfile(agentProfile)) &&
+    (settings.profiles.length === 2 || Boolean(settings.profiles.find((profile) => profile.id === DEFAULT_AILINK_PROFILE_ID)))
   return legacySingleProfile || pairedProfiles
 }
 

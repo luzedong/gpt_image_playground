@@ -89,14 +89,22 @@ describe('getImageApiProxyRoute', () => {
   it('uses the 1K route for auto and 1K-sized images', () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
 
-    expect(getImageApiProxyRoute('auto')).toBe('image-1k')
-    expect(getImageApiProxyRoute('1024x1536')).toBe('image-1k')
+    expect(getImageApiProxyRoute('auto')).toBe('image-pixel-1k')
+    expect(getImageApiProxyRoute('1024x1536')).toBe('image-pixel-1k')
   })
 
   it('uses the 4K route for sizes above the 1K pixel budget', () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
 
-    expect(getImageApiProxyRoute('2048x2048')).toBe('image-4k')
-    expect(getImageApiProxyRoute('3840x2160')).toBe('image-4k')
+    expect(getImageApiProxyRoute('2048x2048')).toBe('image-pixel-4k')
+    expect(getImageApiProxyRoute('3840x2160')).toBe('image-pixel-4k')
+  })
+
+  it('keeps separate provider routes for Pixel and AILink', () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    expect(getImageApiProxyRoute('1024x1536', 'default-openai')).toBe('image-pixel-1k')
+    expect(getImageApiProxyRoute('2048x2048', 'default-openai')).toBe('image-pixel-4k')
+    expect(getImageApiProxyRoute('1024x1536', 'default-ailink-image')).toBe('image-ailink-1k')
+    expect(getImageApiProxyRoute('2048x2048', 'default-ailink-image')).toBe('image-ailink-4k')
   })
 })

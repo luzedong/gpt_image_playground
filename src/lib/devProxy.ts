@@ -11,7 +11,7 @@ export interface DevProxyConfig {
 const DEFAULT_PROXY_PREFIX = '/api-proxy'
 const MAX_1K_PIXELS = 1_572_864
 
-export type ApiProxyRoute = 'default' | 'chat' | 'image-1k' | 'image-4k'
+export type ApiProxyRoute = 'default' | 'chat' | 'image-1k' | 'image-4k' | 'image-pixel-1k' | 'image-pixel-4k' | 'image-ailink-1k' | 'image-ailink-4k'
 
 export function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim()
@@ -106,11 +106,12 @@ export function isServerManagedApiConfigEnabled(): boolean {
   return readRuntimeEnv(import.meta.env.VITE_SERVER_MANAGED_API_CONFIG) === 'true'
 }
 
-export function getImageApiProxyRoute(size: string): ApiProxyRoute {
+export function getImageApiProxyRoute(size: string, profileId = ''): ApiProxyRoute {
   if (!isServerManagedApiConfigEnabled()) return 'default'
   const match = size.match(/^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/)
-  if (!match) return 'image-1k'
-  return Number(match[1]) * Number(match[2]) > MAX_1K_PIXELS ? 'image-4k' : 'image-1k'
+  const highResolution = Boolean(match && Number(match[1]) * Number(match[2]) > MAX_1K_PIXELS)
+  const provider = profileId === 'default-ailink-image' ? 'ailink' : 'pixel'
+  return `image-${provider}-${highResolution ? '4k' : '1k'}` as ApiProxyRoute
 }
 
 export function isApiProxyLocked(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
