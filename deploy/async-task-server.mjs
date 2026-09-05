@@ -13,6 +13,7 @@ const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const activeTasks = new Set()
 const pendingTasks = []
 const agentTaskCreationLocks = new Map()
+const AGENT_IMAGE_DIR = join(DATA_DIR, 'agent-images')
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload)
@@ -25,6 +26,16 @@ function json(res, status, payload) {
 
 function taskPath(id) {
   return join(DATA_DIR, `${id}.json`)
+}
+
+function agentImagePath(taskId, index) {
+  return join(AGENT_IMAGE_DIR, `${taskId}-${index}.bin`)
+}
+
+function dataUrlToBuffer(dataUrl) {
+  const match = /^data:[^;,]+;base64,([\s\S]+)$/i.exec(dataUrl)
+  if (!match) throw new Error('生成图片格式无效')
+  return Buffer.from(match[1], 'base64')
 }
 
 async function saveTask(task) {
@@ -69,7 +80,42 @@ function publicAgentProgress(task, includeImages = false) {
     text: progress.text,
     outputItems: getPublicAgentOutputItems(progress.outputItems),
     pendingImages: progress.pendingImages,
-    ...(includeImages ? { images: progress.images } : {}),
+    ...(includeImages ? {
+      images: progress.images.map((image, index) => {
+        const { dataUrl: _dataUrl, ...metadata } = image
+        return { ...metadata, imageUrl: `/api-agent-tasks/${task.id}/images/${index}` }
+      }),
+    } : {}),
+  }
+}
+
+async function persistAgentImages(task, images) {
+  await mkdir(AGENT_IMAGE_DIR, { recursive: true })
+  await Promise.all(images.map(async (image, index) => {
+    image.mime = image.dataUrl.match(/^data:([^;,]+)/i)?.[1] || 'image/png'
+    await writeFile(agentImagePath(task.id, index), dataUrlToBuffer(image.dataUrl))
+  }))
+}
+
+async function handleAgentImage(req, res, taskId, index) {
+  const task = await loadTask(taskId)
+  if (!task || task.kind !== 'agent') {
+    json(res, 404, { error: { message: 'Agent 任务不存在' } })
+    return
+  }
+  const image = getAgentProgress(task).images[Number(index)]
+  if (!image?.dataUrl) {
+    json(res, 404, { error: { message: '图片不存在' } })
+    return
+  }
+  const mime = image.mime || image.dataUrl.match(/^data:([^;,]+)/i)?.[1] || 'image/png'
+  try {
+    const data = await readFile(agentImagePath(task.id, Number(index)))
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store' })
+    res.end(data)
+  } catch {
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store' })
+    res.end(dataUrlToBuffer(image.dataUrl))
   }
 }
 
@@ -730,12 +776,14 @@ function createAgentProgressReporter(task) {
 async function executeAgentImage(task, toolCallId, prompt, references, metadata = {}) {
   const cleanPrompt = stripAgentReferenceTags(prompt)
   if (!cleanPrompt) throw new Error('图像提示词不能为空')
+  const startedAt = Date.now()
   const result = await executeUpstream({
     params: { ...task.params, n: 1 },
     prompt: cleanPrompt,
     inputImages: references,
     nativeTransparentBackground: false,
   })
+  const finishedAt = Date.now()
   return result.images.map((dataUrl, index) => ({
     dataUrl,
     toolCallId: metadata.batchCallId ? `${metadata.batchCallId}:${metadata.batchItemId || index + 1}` : toolCallId,
@@ -745,6 +793,8 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
     actualParams: { ...task.params, n: 1 },
     revisedPrompt: cleanPrompt,
     action: references.length > 0 ? 'edit' : 'generate',
+    startedAt,
+    finishedAt,
   }))
 }
 
@@ -844,6 +894,7 @@ async function executeAgentUpstream(task) {
     }
 
     outputItems.push(...functionOutputs)
+    await persistAgentImages(task, images)
     await progress.report({
       text: textSegments.join('\n\n').trim(),
       outputItems,
@@ -1052,6 +1103,11 @@ const server = createServer(async (req, res) => {
     json(res, 200, publicTask(task, true))
     return
   }
+  const agentImageMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/images\/(\d+)$/)
+  if (req.method === 'GET' && agentImageMatch) {
+    await handleAgentImage(req, res, agentImageMatch[1], agentImageMatch[2])
+    return
+  }
   if (req.method === 'GET' && agentProgressMatch) {
     const task = await loadTask(agentProgressMatch[1])
     if (!task || task.kind !== 'agent') {
@@ -1093,6 +1149,7 @@ const server = createServer(async (req, res) => {
 })
 
 await mkdir(DATA_DIR, { recursive: true })
+await mkdir(AGENT_IMAGE_DIR, { recursive: true })
 await cleanupTasks()
 await restoreTasks()
 setInterval(() => void cleanupTasks(), 6 * 60 * 60 * 1000)

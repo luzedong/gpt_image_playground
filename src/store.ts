@@ -2623,6 +2623,8 @@ async function storeServerManagedAgentImages(
       if (image.referenceId) resultReferenceImageIds.set(image.referenceId, stored.id)
       continue
     }
+    const imageStartedAt = image.startedAt ?? startedAt
+    const imageFinishedAt = image.finishedAt ?? Date.now()
     const task: TaskRecord = {
       id: genId(),
       prompt,
@@ -2642,9 +2644,9 @@ async function storeServerManagedAgentImages(
       rawResponsePayload: result.rawResponsePayload,
       status: 'done',
       error: null,
-      createdAt: startedAt,
-      finishedAt: Date.now(),
-      elapsed: Date.now() - startedAt,
+      createdAt: imageStartedAt,
+      finishedAt: imageFinishedAt,
+      elapsed: Math.max(0, imageFinishedAt - imageStartedAt),
       sourceMode: 'agent',
       agentConversationId: conversationId,
       agentRoundId: roundId,

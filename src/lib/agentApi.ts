@@ -15,6 +15,8 @@ export interface AgentApiResultImage {
   prompt?: string
   actualParams?: Partial<TaskParams>
   revisedPrompt?: string
+  startedAt?: number
+  finishedAt?: number
 }
 
 export interface AgentApiImageToolFailure {
