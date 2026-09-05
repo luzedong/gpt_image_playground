@@ -452,6 +452,7 @@ async function readAgentStreamPayload(response, onTextDelta) {
   let completedPayload = null
   let fallbackOutput = []
   let fallbackResponseId
+  let streamCompleted = false
   const decoder = new TextDecoder()
 
   const mergeOutputItems = (items, outputIndices) => {
@@ -484,7 +485,11 @@ async function readAgentStreamPayload(response, onTextDelta) {
       .map((line) => line.slice(5).trimStart())
       .join('\n')
       .trim()
-    if (!data || data === '[DONE]') return
+    if (!data) return
+    if (data === '[DONE]') {
+      streamCompleted = true
+      return
+    }
 
     let event
     try {
@@ -507,10 +512,16 @@ async function readAgentStreamPayload(response, onTextDelta) {
       if (Array.isArray(event.response.output)) {
         mergeOutputItems(
           event.response.output,
-          type === 'response.completed' ? event.response.output.map((_, index) => index) : undefined,
+          type === 'response.completed' || type === 'response.done'
+            ? event.response.output.map((_, index) => index)
+            : undefined,
         )
       }
-      if (type === 'response.completed') completedPayload = event.response
+      const responseStatus = typeof event.response.status === 'string' ? event.response.status : ''
+      if (type === 'response.completed' || type === 'response.done' || responseStatus === 'completed') {
+        completedPayload = event.response
+        streamCompleted = true
+      }
       return
     }
 
@@ -526,10 +537,16 @@ async function readAgentStreamPayload(response, onTextDelta) {
     buffer += decoder.decode(chunk, { stream: true })
     const blocks = buffer.split(/\r?\n\r?\n/)
     buffer = blocks.pop() || ''
-    for (const block of blocks) await processEvent(block)
+    for (const block of blocks) {
+      await processEvent(block)
+      if (streamCompleted) break
+    }
+    if (streamCompleted) break
   }
-  buffer += decoder.decode()
-  if (buffer.trim()) await processEvent(buffer)
+  if (!streamCompleted) {
+    buffer += decoder.decode()
+    if (buffer.trim()) await processEvent(buffer)
+  }
 
   const payload = completedPayload
     ? { ...completedPayload, output: fallbackOutput.length ? fallbackOutput.filter(Boolean) : completedPayload.output }
