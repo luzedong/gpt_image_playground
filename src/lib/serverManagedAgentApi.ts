@@ -194,6 +194,7 @@ export async function callServerManagedAgentApi(opts: {
   input: unknown[]
   instructions: string
   params: TaskParams
+  imageProfileId?: string
   roundIndex: number
   maxToolRounds: number
   enableWebSearch: boolean
@@ -210,6 +211,7 @@ export async function callServerManagedAgentApi(opts: {
       input: opts.input,
       instructions: opts.instructions,
       params: opts.params,
+      image_profile_id: opts.imageProfileId,
       round_index: opts.roundIndex,
       max_tool_rounds: opts.maxToolRounds,
       enable_web_search: opts.enableWebSearch,

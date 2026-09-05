@@ -2847,6 +2847,7 @@ async function executeServerManagedAgentRound(opts: {
     input: apiInput,
     instructions: createAgentInstructions(requestSettings),
     params,
+    imageProfileId: imageProfile.id,
     roundIndex: round.index,
     maxToolRounds,
     enableWebSearch: requestSettings.agentWebSearch,
