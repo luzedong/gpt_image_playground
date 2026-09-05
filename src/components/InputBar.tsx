@@ -854,15 +854,6 @@ export default function InputBar() {
     window.setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
-  const handleCopyPromptCase = async (item: AwesomePromptCase) => {
-    try {
-      await navigator.clipboard.writeText(item.prompt)
-      showToast('Prompt 已复制', 'success')
-    } catch {
-      showToast('复制失败，请手动复制', 'error')
-    }
-  }
-
   const handleImportPromptCase = async (item: AwesomePromptCase) => {
     if (inputImages.length >= API_MAX_IMAGES) {
       showToast(`参考图数量已达上限（${API_MAX_IMAGES} 张）`, 'error')
@@ -1642,7 +1633,6 @@ export default function InputBar() {
               <PromptLibraryPanel
                 canImportImage={inputImages.length < API_MAX_IMAGES}
                 importingId={importingPromptId}
-                onCopyPrompt={(item) => void handleCopyPromptCase(item)}
                 onImportImage={(item) => void handleImportPromptCase(item)}
                 onUsePrompt={handleUsePromptCase}
               />
