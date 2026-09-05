@@ -18,6 +18,7 @@ import { useHintTooltip } from '../hooks/useHintTooltip'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { downloadImageEntriesAsZip, downloadImageIds, formatExportFileTime, getTaskOutputImageZipEntries } from '../lib/downloadImages'
 import { getAwesomePromptImageUrl, type AwesomePromptCase } from '../lib/awesomePromptLibrary'
+import imageParamsIcon from '../assets/imageParams.svg'
 import SizePickerModal from './SizePickerModal'
 import PromptLibraryPanel from './PromptLibraryPanel'
 import { CloseIcon, CollapseIcon, ExpandIcon } from './icons'
@@ -576,8 +577,6 @@ export default function InputBar() {
         { label: 'medium', value: 'medium' },
         { label: 'high', value: 'high' },
       ]
-  const qualityLabel = qualityOptions.find((option) => option.value === (activeProfile.codexCli ? 'auto' : isFalProvider && params.quality === 'auto' ? 'high' : params.quality))?.label ?? params.quality
-  const paramsSummary = `${displaySize} · ${qualityLabel} · ${agentAutoImageCount ? '自动' : `${effectiveNValue}张`}`
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
   const transparentOutputHint = useHintTooltip()
@@ -1670,15 +1669,13 @@ export default function InputBar() {
     <button
       type="button"
       onClick={() => setParamsExpanded((expanded) => !expanded)}
-      className="flex h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-gray-200/60 bg-white/50 px-3 text-left text-xs text-gray-600 shadow-sm transition hover:bg-white focus:outline-none focus:ring-1 focus:ring-blue-300/40 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/[0.06]"
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-sm transition focus:outline-none focus:ring-1 focus:ring-blue-300/40 ${paramsExpanded ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : 'border-gray-200/60 bg-white/50 hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:bg-white/[0.06]'}`}
       aria-expanded={paramsExpanded}
       aria-controls="image-parameters-panel"
+      aria-label="图片参数"
+      title="图片参数"
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="font-medium text-gray-700 dark:text-gray-200">参数</span>
-        <span className="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{paramsSummary}</span>
-      </span>
-      <svg className={`h-4 w-4 shrink-0 transition-transform ${paramsExpanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      <img src={imageParamsIcon} alt="" className="h-5 w-5 dark:invert" />
     </button>
   )
 
@@ -1944,11 +1941,6 @@ export default function InputBar() {
           <div className="mt-3">
             {/* 桌面端布局 */}
             <div className="hidden sm:flex items-end justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                {renderParamsToggle()}
-                {paramsExpanded && <div id="image-parameters-panel" className="mt-2">{renderParams('grid-cols-6')}</div>}
-              </div>
-
               <div className="flex gap-2 flex-shrink-0 mb-0.5">
                 <button
                   type="button"
@@ -1961,6 +1953,7 @@ export default function InputBar() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m12 3 1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3L7.5 7.5l3.3-1.2L12 3Zm7 9 .7 1.8 1.8.7-1.8.7L19 17l-.7-1.8-1.8-.7 1.8-.7L19 12ZM5 14l.9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14Z" />
                   </svg>
                 </button>
+                {renderParamsToggle()}
                 <div
                   className="relative"
                   onMouseEnter={() => setAttachHover(true)}
@@ -2012,12 +2005,10 @@ export default function InputBar() {
                 </div>
               </div>
             </div>
+            {paramsExpanded && <div id="image-parameters-panel" className="mt-2">{renderParams('grid-cols-6')}</div>}
 
             {/* 移动端布局 */}
             <div className="sm:hidden flex flex-col gap-2">
-              {renderParamsToggle()}
-              {paramsExpanded && <div id="image-parameters-panel" className="pt-1">{renderParams('grid-cols-2')}</div>}
-
               <div className="flex items-center gap-2">
                 <div
                   className="relative"
@@ -2093,6 +2084,16 @@ export default function InputBar() {
                           </svg>
                           灵感素材
                         </button>
+                        <button
+                          className="w-full px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2 transition-colors"
+                          onClick={() => {
+                            setShowMobileUploadMenu(false)
+                            setParamsExpanded((expanded) => !expanded)
+                          }}
+                        >
+                          <img src={imageParamsIcon} alt="" className="h-4 w-4 dark:invert" />
+                          图片参数
+                        </button>
                       </div>
                     </>
                   )}
@@ -2128,6 +2129,7 @@ export default function InputBar() {
                   </button>
                 </div>
               </div>
+              {paramsExpanded && <div id="image-parameters-panel" className="pt-1">{renderParams('grid-cols-2')}</div>}
             </div>
           </div>
 
