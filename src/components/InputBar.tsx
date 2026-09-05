@@ -29,6 +29,7 @@ import InputParamsPanel from './input/inputParamsPanel'
 /** API 支持的最大参考图数量 */
 const API_MAX_IMAGES = 16
 const LIBRARY_PROMPT_SESSION_KEY = 'gpt-image-playground:library-prompt'
+const PROMPT_LIBRARY_SCROLL_KEY = 'gpt-image-playground:prompt-library-scroll'
 
 function getFavoriteCollectionTasksForBatch(collectionId: string, tasks: TaskRecord[], defaultFavoriteCollectionId: string | null) {
   const favoriteTasks = tasks.filter((task) => task.isFavorite)
@@ -436,6 +437,52 @@ export default function InputBar() {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [showPromptLibrary])
+
+  useEffect(() => {
+    if (!showPromptLibrary) return
+    const scrollEl = promptLibraryScrollRef.current
+    if (!scrollEl) return
+
+    let savedTop = 0
+    try {
+      const value = Number(window.localStorage.getItem(PROMPT_LIBRARY_SCROLL_KEY))
+      if (Number.isFinite(value) && value > 0) savedTop = value
+    } catch {
+      // 某些隐私模式下 localStorage 不可用，不影响素材库使用。
+    }
+
+    if (!savedTop) return
+    const restore = () => {
+      if (scrollEl.scrollHeight >= savedTop + scrollEl.clientHeight || scrollEl.scrollHeight > scrollEl.clientHeight) {
+        scrollEl.scrollTop = savedTop
+        return true
+      }
+      return false
+    }
+    if (restore()) return
+
+    const observer = new ResizeObserver(() => {
+      if (restore()) observer.disconnect()
+    })
+    observer.observe(scrollEl)
+    const timer = window.setTimeout(() => {
+      scrollEl.scrollTop = savedTop
+      observer.disconnect()
+    }, 1500)
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timer)
+    }
+  }, [showPromptLibrary])
+
+  const handlePromptLibraryScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    try {
+      window.localStorage.setItem(PROMPT_LIBRARY_SCROLL_KEY, String(event.currentTarget.scrollTop))
+    } catch {
+      // 某些隐私模式下 localStorage 不可用，不影响素材库滚动。
+    }
+  }, [])
+
   usePreventBackgroundScroll(showPromptLibrary, promptLibraryScrollRef)
 
   const settingsActiveProfile = useMemo(() => getActiveApiProfile(settings), [settings])
@@ -1646,7 +1693,7 @@ export default function InputBar() {
                 <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            <div ref={promptLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+            <div ref={promptLibraryScrollRef} onScroll={handlePromptLibraryScroll} className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
               <PromptLibraryPanel
                 canImportImage={inputImages.length < API_MAX_IMAGES}
                 importingId={importingPromptId}
