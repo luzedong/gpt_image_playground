@@ -2005,6 +2005,7 @@ export default function InputBar() {
                 <button
                   type="button"
                   onClick={() => void toggleSpeechInput()}
+                  hidden
                   disabled={isTranscribingSpeech}
                   className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-sm transition ${isRecordingSpeech
                     ? 'bg-red-500 text-white hover:bg-red-600'
@@ -2156,6 +2157,7 @@ export default function InputBar() {
                 <button
                   type="button"
                   onClick={() => void toggleSpeechInput()}
+                  hidden
                   disabled={isTranscribingSpeech}
                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm transition ${isRecordingSpeech
                     ? 'bg-red-500 text-white hover:bg-red-600'
