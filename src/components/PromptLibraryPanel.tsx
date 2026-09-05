@@ -102,10 +102,10 @@ function PromptCaseCard({
           <button type="button" onClick={onUsePrompt} className="flex h-11 w-full items-center justify-center gap-1 rounded-lg bg-violet-600/90 px-1 text-[10px] font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60" title="将完整 Prompt 填入输入框">
             <LibraryIcon type="sparkles" className="h-3.5 w-3.5" />填入 Prompt
           </button>
+          <button type="button" onClick={onImportImage} disabled={!canImportImage || importing || imageFailed} className="flex h-11 w-full items-center justify-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-1 text-[10px] font-medium text-cyan-700 transition hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-40 dark:border-cyan-400/15 dark:bg-cyan-500/[0.06] dark:text-cyan-200 dark:hover:bg-cyan-500/[0.12]" title={canImportImage ? '下载单张案例图并加入当前编辑素材' : '参考图数量已达上限'}>
+            <LibraryIcon type="download" className="h-3.5 w-3.5" />{importing ? '导入中…' : canImportImage ? '导入为参考图' : '素材已满'}
+          </button>
         </div>
-        <button type="button" onClick={onImportImage} disabled={!canImportImage || importing || imageFailed} className="mt-1.5 flex h-11 w-full items-center justify-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-1 text-[10px] font-medium text-cyan-700 transition hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-40 dark:border-cyan-400/15 dark:bg-cyan-500/[0.06] dark:text-cyan-200 dark:hover:bg-cyan-500/[0.12]" title={canImportImage ? '下载单张案例图并加入当前编辑素材' : '参考图数量已达上限'}>
-          <LibraryIcon type="download" className="h-3.5 w-3.5" />{importing ? '导入中…' : canImportImage ? '导入为参考图' : '素材已满'}
-        </button>
         <div className="mt-2 flex items-center justify-between gap-2 text-[9px] text-gray-500 dark:text-gray-600">
           <span className="truncate" title={item.sourceLabel}>来源：{item.sourceLabel}</span>
           <a href={item.sourceUrl || item.githubUrl} target="_blank" rel="noopener noreferrer" className="flex h-11 shrink-0 items-center gap-1 rounded-md px-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.05] dark:hover:text-gray-300" aria-label={`打开「${item.title}」来源`}>
