@@ -6,6 +6,7 @@
 - `executeServerManagedAgentRound()` 在任务完成前只创建空助手消息，`commitServerManagedAgentResult()` 才一次性写入最终文本和图片，正是“完成后对话内容全部显示”的直接原因。
 - 修复方向：服务端读取 Responses SSE，并将文本、当前输出项、待生成图片和已完成图片作为持久化进度快照；状态轮询只取轻量摘要，进度变化时再取包含图片的快照。
 - 前端恢复时复用同一个 `serverTaskId`，将进度文本写入已有助手消息、为工具调用创建 running 图像任务占位，最终结果接口只负责补齐图片和结束轮次。
+- 已实现并部署：服务端请求 `stream: true`，文本增量按进度快照保存；客户端以 800ms 轮询消费，图片数据仅在 `imageRevision` 变化时通过 `/progress` 下载，避免状态轮询反复携带 base64 图片。
 
 ## Agent 异步任务超时重构线上验收（2026-09-05）
 
