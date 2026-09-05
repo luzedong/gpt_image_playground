@@ -452,26 +452,32 @@ export default function InputBar() {
     }
 
     if (!savedTop) return
-    const restore = () => {
-      if (scrollEl.scrollHeight >= savedTop + scrollEl.clientHeight || scrollEl.scrollHeight > scrollEl.clientHeight) {
-        scrollEl.scrollTop = savedTop
-        return true
-      }
-      return false
+    let restored = false
+    const restore = (force = false) => {
+      const loading = Boolean(scrollEl.querySelector('[aria-busy="true"]'))
+      const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+      if (!force && (loading || maxTop <= 0)) return false
+      scrollEl.scrollTop = Math.min(savedTop, maxTop)
+      restored = true
+      return true
     }
-    if (restore()) return
 
-    const observer = new ResizeObserver(() => {
+    const observer = new MutationObserver(() => {
       if (restore()) observer.disconnect()
     })
-    observer.observe(scrollEl)
+    observer.observe(scrollEl, { childList: true, subtree: true })
+    const interval = window.setInterval(() => {
+      if (restore()) window.clearInterval(interval)
+    }, 100)
     const timer = window.setTimeout(() => {
-      scrollEl.scrollTop = savedTop
+      if (!restored) restore(true)
       observer.disconnect()
-    }, 1500)
+      window.clearInterval(interval)
+    }, 5000)
     return () => {
       observer.disconnect()
       window.clearTimeout(timer)
+      window.clearInterval(interval)
     }
   }, [showPromptLibrary])
 
