@@ -128,11 +128,11 @@ function PromptCaseCard({
           {item.styles.slice(0, 1).map((style) => <span key={style} className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-white/[0.05]">{style}</span>)}
         </div>
         <div className="mt-2.5 grid grid-cols-2 gap-1.5">
-          <button type="button" onClick={onUsePrompt} className="flex h-11 w-full items-center justify-center gap-1 rounded-lg bg-violet-600/90 px-1 text-[10px] font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60" title="将完整 Prompt 填入输入框">
-            <LibraryIcon type="sparkles" className="h-3.5 w-3.5" />填入 Prompt
+          <button type="button" onClick={onUsePrompt} className="flex h-11 w-full items-center justify-center gap-1 rounded-lg bg-violet-600/90 px-1 text-[10px] font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60" title="将完整描述填入输入框">
+            <LibraryIcon type="sparkles" className="h-3.5 w-3.5" />填入描述
           </button>
           <button type="button" onClick={onImportImage} disabled={!canImportImage || importing || imageFailed} className="flex h-11 w-full items-center justify-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-1 text-[10px] font-medium text-cyan-700 transition hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-40 dark:border-cyan-400/15 dark:bg-cyan-500/[0.06] dark:text-cyan-200 dark:hover:bg-cyan-500/[0.12]" title={canImportImage ? '下载单张案例图并加入当前编辑素材' : '参考图数量已达上限'}>
-            <LibraryIcon type="download" className="h-3.5 w-3.5" />{importing ? '导入中…' : canImportImage ? '导入为参考图' : '素材已满'}
+            <LibraryIcon type="download" className="h-3.5 w-3.5" />{importing ? '导入中…' : canImportImage ? '导入图片' : '素材已满'}
           </button>
         </div>
         <div className="mt-2 flex items-center justify-between gap-2 text-[9px] text-gray-500 dark:text-gray-600">
@@ -223,29 +223,30 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
 
   return (
     <div className="space-y-3" data-prompt-library>
-      <label className="relative block">
-        <span className="sr-only">搜索 Prompt 案例</span>
-        <LibraryIcon type="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标题、风格或 Prompt" className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-violet-400/70 focus:bg-white focus:ring-2 focus:ring-violet-500/10 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-200 dark:placeholder:text-gray-700 dark:focus:bg-[#0d1015]" />
-      </label>
-
-      <div className="flex gap-2">
-        <label className="min-w-0 flex-1">
-          <span className="sr-only">筛选案例分类</span>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!manifest} className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-xs text-gray-700 outline-none transition focus:border-violet-400/70 focus:bg-white disabled:opacity-50 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-300 dark:focus:bg-[#0d1015]">
-            <option value="all">全部分类</option>
-            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
+      <div className="sticky top-0 z-20 -mx-1 space-y-2 bg-white/95 px-1 pb-2 pt-1 backdrop-blur-xl dark:bg-gray-900/95">
+        <label className="relative block">
+          <span className="sr-only">搜索 Prompt 案例</span>
+          <LibraryIcon type="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标题、风格或 Prompt" className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-violet-400/70 focus:bg-white focus:ring-2 focus:ring-violet-500/10 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-200 dark:placeholder:text-gray-700 dark:focus:bg-[#0d1015]" />
         </label>
-        <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="重新加载素材库" title="重新加载素材库">
-          <LibraryIcon type="refresh" />
-        </button>
-      </div>
 
-      <div className="flex gap-2 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.04]">
-        {([['all', '全部素材'], ['favorites', `我的收藏${favoriteIds.size ? ` (${favoriteIds.size})` : ''}`]] as const).map(([value, label]) => (
-          <button key={value} type="button" onClick={() => setShowFavorites(value === 'favorites')} className={`flex h-10 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-400/60 ${showFavorites === (value === 'favorites') ? 'bg-white text-violet-700 shadow-sm dark:bg-white/[0.1] dark:text-violet-200' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}><LibraryIcon type="star" className="h-3.5 w-3.5" />{label}</button>
-        ))}
+        <div className="flex min-w-0 gap-2">
+          <div className="flex min-w-0 flex-1 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.04]">
+            {([['all', '全部'], ['favorites', `收藏${favoriteIds.size ? ` ${favoriteIds.size}` : ''}`]] as const).map(([value, label]) => (
+              <button key={value} type="button" onClick={() => setShowFavorites(value === 'favorites')} className={`flex h-9 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-400/60 ${showFavorites === (value === 'favorites') ? 'bg-white text-violet-700 shadow-sm dark:bg-white/[0.1] dark:text-violet-200' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}><LibraryIcon type="star" className="h-3.5 w-3.5 shrink-0" />{label}</button>
+            ))}
+          </div>
+          <label className="w-[8.5rem] shrink-0 sm:w-44">
+            <span className="sr-only">筛选案例分类</span>
+            <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!manifest} className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 text-xs text-gray-700 outline-none transition focus:border-violet-400/70 focus:bg-white disabled:opacity-50 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-300 dark:focus:bg-[#0d1015]">
+              <option value="all">全部分类</option>
+              {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="重新加载素材库" title="重新加载素材库">
+            <LibraryIcon type="refresh" />
+          </button>
+        </div>
       </div>
 
       {loading && <LibrarySkeleton />}
@@ -309,9 +310,9 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
                 <p className="mb-2 text-[10px] font-semibold text-gray-500 dark:text-gray-400">完整 Prompt</p>
                 <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-gray-700 dark:text-gray-300">{selectedCase.prompt}</pre>
               </div>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <button type="button" onClick={() => { onUsePrompt(selectedCase); setSelectedCase(null) }} className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60"><LibraryIcon type="sparkles" className="h-4 w-4" />填入 Prompt</button>
-                <button type="button" onClick={() => onImportImage(selectedCase)} disabled={!canImportImage || importingId === selectedCase.id} className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-cyan-400/15 dark:bg-cyan-500/[0.06] dark:text-cyan-200"><LibraryIcon type="download" className="h-4 w-4" />{importingId === selectedCase.id ? '导入中…' : '导入参考图'}</button>
+              <div className="mt-4 flex gap-2">
+                <button type="button" onClick={() => { onUsePrompt(selectedCase); setSelectedCase(null) }} className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-violet-600 px-2 text-xs font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60"><LibraryIcon type="sparkles" className="h-4 w-4 shrink-0" />填入描述</button>
+                <button type="button" onClick={() => onImportImage(selectedCase)} disabled={!canImportImage || importingId === selectedCase.id} className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-cyan-400/15 dark:bg-cyan-500/[0.06] dark:text-cyan-200"><LibraryIcon type="download" className="h-4 w-4 shrink-0" />{importingId === selectedCase.id ? '导入中…' : '导入图片'}</button>
               </div>
               <button type="button" onClick={() => toggleFavorite(selectedCase.id)} className={`mt-2 flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-400/60 ${favoriteIds.has(selectedCase.id) ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200' : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]'}`}><LibraryIcon type="star" className="h-4 w-4" />{favoriteIds.has(selectedCase.id) ? '已收藏' : '收藏素材'}</button>
               <a href={selectedCase.sourceUrl || selectedCase.githubUrl} target="_blank" rel="noopener noreferrer" className="mt-3 flex h-11 items-center justify-center gap-1 text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-800 dark:hover:text-gray-200"><LibraryIcon type="external" className="h-3.5 w-3.5" />查看来源</a>

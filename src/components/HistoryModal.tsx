@@ -167,7 +167,7 @@ export default function HistoryModal({ onClose, ignoreOutsideClickRef }: History
 
     setConfirmDialog({
       title: '删除对话',
-      message: '确定要删除这个 Agent 对话吗？',
+        message: '确定要删除这个对话吗？',
       checkbox: relatedTaskIds.length > 0
         ? {
             label: generatedImageCount > 0

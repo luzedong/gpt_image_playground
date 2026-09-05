@@ -332,6 +332,7 @@ export default function InputBar() {
   const [attachHover, setAttachHover] = useState(false)
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
+  const [paramsExpanded, setParamsExpanded] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
   const [showPromptLibrary, setShowPromptLibrary] = useState(false)
   const [promptLibraryScrollTop, setPromptLibraryScrollTop] = useState(0)
@@ -564,7 +565,7 @@ export default function InputBar() {
     : (activeProfile.codexCli ? normalizeCodexCliImageSize(params.size) : normalizeImageSize(params.size)) || DEFAULT_PARAMS.size
 
   const qualityOptions = isFalProvider
-    ? [
+      ? [
         { label: 'low', value: 'low' },
         { label: 'medium', value: 'medium' },
         { label: 'high', value: 'high' },
@@ -575,6 +576,8 @@ export default function InputBar() {
         { label: 'medium', value: 'medium' },
         { label: 'high', value: 'high' },
       ]
+  const qualityLabel = qualityOptions.find((option) => option.value === (activeProfile.codexCli ? 'auto' : isFalProvider && params.quality === 'auto' ? 'high' : params.quality))?.label ?? params.quality
+  const paramsSummary = `${displaySize} · ${qualityLabel} · ${agentAutoImageCount ? '自动' : `${effectiveNValue}张`}`
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
   const transparentOutputHint = useHintTooltip()
@@ -1663,6 +1666,22 @@ export default function InputBar() {
     />
   )
 
+  const renderParamsToggle = () => (
+    <button
+      type="button"
+      onClick={() => setParamsExpanded((expanded) => !expanded)}
+      className="flex h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-gray-200/60 bg-white/50 px-3 text-left text-xs text-gray-600 shadow-sm transition hover:bg-white focus:outline-none focus:ring-1 focus:ring-blue-300/40 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/[0.06]"
+      aria-expanded={paramsExpanded}
+      aria-controls="image-parameters-panel"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="font-medium text-gray-700 dark:text-gray-200">参数</span>
+        <span className="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{paramsSummary}</span>
+      </span>
+      <svg className={`h-4 w-4 shrink-0 transition-transform ${paramsExpanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+    </button>
+  )
+
   const showFavoriteCollectionBatchBar = inCollectionOverview && selectedFavoriteCollectionIds.length > 0
   const showTaskBatchBar = !showFavoriteCollectionBatchBar && selectedTaskIds.length > 0
 
@@ -1925,7 +1944,10 @@ export default function InputBar() {
           <div className="mt-3">
             {/* 桌面端布局 */}
             <div className="hidden sm:flex items-end justify-between gap-3">
-              {renderParams('grid-cols-6')}
+              <div className="min-w-0 flex-1">
+                {renderParamsToggle()}
+                {paramsExpanded && <div id="image-parameters-panel" className="mt-2">{renderParams('grid-cols-6')}</div>}
+              </div>
 
               <div className="flex gap-2 flex-shrink-0 mb-0.5">
                 <button
@@ -1993,12 +2015,8 @@ export default function InputBar() {
 
             {/* 移动端布局 */}
             <div className="sm:hidden flex flex-col gap-2">
-              <div className={`collapse-section${mobileCollapsed ? ' collapsed' : ''}`}>
-                <div className="collapse-inner">
-                  {renderParams('grid-cols-2')}
-                  <div className="h-2" />
-                </div>
-              </div>
+              {renderParamsToggle()}
+              {paramsExpanded && <div id="image-parameters-panel" className="pt-1">{renderParams('grid-cols-2')}</div>}
 
               <div className="flex items-center gap-2">
                 <div
