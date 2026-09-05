@@ -186,7 +186,7 @@ export async function callServerManagedAgentApi(opts: {
     throw new Error(getErrorMessage(created, `创建 Agent 异步任务失败：HTTP ${response.status}`))
   }
 
-  const baseDelayMs = Math.max(0, opts.pollIntervalMs ?? 800)
+  const baseDelayMs = Math.max(0, opts.pollIntervalMs ?? 250)
   let retryAttempt = 0
   let progressRevision = 0
   let imageRevision = 0
@@ -200,14 +200,14 @@ export async function callServerManagedAgentApi(opts: {
       if (imagePayload.progress) {
         progressRevision = imagePayload.progress.revision
         imageRevision = imagePayload.progress.imageRevision
-        await opts.onProgress?.(await hydrateProgressImages(imagePayload.progress, opts.signal))
+        void opts.onProgress?.(await hydrateProgressImages(imagePayload.progress, opts.signal))
         return
       }
     }
 
     progressRevision = progress.revision
     imageRevision = progress.imageRevision
-    await opts.onProgress?.(await hydrateProgressImages(progress, opts.signal))
+    void opts.onProgress?.(await hydrateProgressImages(progress, opts.signal))
   }
 
   while (true) {
