@@ -633,13 +633,16 @@ function createAgentProgressReporter(task) {
     const previous = getAgentProgress(task)
     const nextImages = images ?? previous.images
     const imageChanged = nextImages.length !== previous.images.length
+    const nextOutputItems = outputItems ?? previous.outputItems
+    const nextPendingImages = pendingImages ?? previous.pendingImages
     task.progress = {
       revision: previous.revision + 1,
       imageRevision: previous.imageRevision + (imageChanged ? 1 : 0),
       text: text ?? previous.text,
-      outputItems: outputItems ?? previous.outputItems,
-      pendingImages: pendingImages ?? previous.pendingImages,
-      images: nextImages,
+      // 进度快照不能直接引用执行中的数组，否则后续 push 会改写旧快照，导致版本比较失效。
+      outputItems: nextOutputItems.map((item) => ({ ...item })),
+      pendingImages: nextPendingImages.map((item) => ({ ...item })),
+      images: nextImages.map((image) => ({ ...image })),
     }
     task.updatedAt = Date.now()
     const now = Date.now()
@@ -1007,7 +1010,8 @@ const server = createServer(async (req, res) => {
       json(res, 404, { error: { message: '任务不存在' } })
       return
     }
-    json(res, 200, publicTask(task))
+    // 完成态需要携带图片结果；运行态仍只返回轻量状态，避免轮询反复传输 base64。
+    json(res, 200, publicTask(task, task.status === 'done'))
     return
   }
   json(res, 404, { error: { message: 'Not Found' } })

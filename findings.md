@@ -289,3 +289,11 @@
 
 - 可参考即梦AI、通义万相、美图设计室、稿定设计等产品：核心入口通常是“生成/编辑→结果预览→保存/分享”，不会把上游 API Key 交给用户；会有内容安全拦截、生成结果标识、用户协议/隐私政策和投诉举报入口。
 - “纯工具 + 用户自带 Key + 任意第三方 URL”适合 Web/开发者工具，但不适合小程序首发：网络域名不可控、密钥和个人信息流向难解释、生成内容责任边界不清，容易在审核环节被要求整改。
+
+## Phase 23 — 服务端完成结果未落库排查（2026-09-05）
+
+- 线上最近 Agent 任务文件显示 `status=done`、`result.images.length=1`，单张结果 data URL 约 2.5–2.8 MB；因此至少有一类问题不是上游生图失败。
+- 线上 Agent 任务的 `progress.images.length=1`，但 `progress.imageRevision=0`。服务端 `createAgentProgressReporter.report()` 将 `images` 数组直接写入 `task.progress`，之后 `images.push()` 会同步改变旧快照，导致 `nextImages.length !== previous.images.length` 永远不成立。
+- 前端服务端 Agent 流程在完成态会单独请求 `/result`，理论上能拿到上述图片；进度版本号失效仍会导致生成中图片无法增量同步，并增加页面切换/恢复时只看到完成文本的概率。
+- 线上最近普通 image 任务的 `.json` 也有 `result.images.length=1`，需要补强客户端完成结果的可诊断校验，避免把已有服务端结果误报为空。
+- 已在远端容器复现普通任务接口缺陷：`GET /api-tasks/:id` 返回 `status=done` 但没有 `result`，响应约 153 bytes；任务文件本身有图片结果。根因是路由调用 `publicTask(task)` 的默认 `includeResult=false`，而客户端完成态直接从该响应读取 `result.images`。
