@@ -1,5 +1,11 @@
 # Findings & Decisions
 
+## Agent 生图工具调用再次消失（2026-09-05）
+
+- 远端最新三条 Agent 任务均为 `done`，文本有内容但 `progress.outputItems=[]`、`result.images=[]`；因此不是画廊渲染问题，而是服务端在模型调用阶段已经丢失工具调用。
+- Responses SSE 先发送 `response.output_item.done` 的 `function_call`，随后部分上游发送 `response.completed` 且 `response.output=[]`。服务端解析器此前把后者直接作为最终 payload，覆盖了之前收集的工具调用。
+- 修复为按 `id`/输出索引合并每个 SSE 输出项；空的完成快照不再清空之前的 `generate_image` 调用。验证结果恢复为 `function_call`、`function_call_output`、`message` 三类输出，并成功生成 1 张图片。
+
 ## Agent 服务端进度流问题（2026-09-05）
 
 - 当前服务端 `callAgentUpstream()` 明确发送 `stream: false`，并且客户端 `callServerManagedAgentApi()` 只在 `/result` 完成后返回；因此服务端异步化后，前端没有中间文本或工具状态可以渲染。

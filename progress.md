@@ -1,5 +1,11 @@
 # Progress Log
 
+## Session: 2026-09-05 — Phase 22 进行中
+
+- 用户反馈 Agent 只显示正常文字回复，之前的生图工具和生成中任务不见了。
+- 线上任务核对确认：最新任务均已完成，但结果文本存在、`result.images=0`、`result.outputItems=[]`；定位为 SSE 解析器被空 `response.completed.output` 覆盖。
+- 已修复输出项合并逻辑；本地模拟上游以“工具调用事件 + 空完成快照”复现，修复后服务端结果包含 `function_call`、`function_call_output`、`message` 且图片数量为 1。
+
 ## Session: 2026-09-05 — Phase 21 完成
 
 - 定位到服务端异步 Agent 使用 `stream: false`，客户端只在 `/result` 完成后提交助手消息，导致文本和“生图生成中”一起延迟到整轮结束。

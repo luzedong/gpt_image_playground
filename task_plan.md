@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 21: Agent 服务端进度流恢复（已完成）
+Phase 22: Agent 流式工具调用丢失修复（进行中）
 
 ## Phases
 
@@ -185,6 +185,13 @@ Phase 21: Agent 服务端进度流恢复（已完成）
 - [x] 前端轮询时即时更新助手文本和生图中占位任务，重开后继续展示进度
 - [x] 增加回归测试、构建、推送并重新部署
 - **Status:** complete
+
+### Phase 22: Agent 流式工具调用丢失修复
+
+- [ ] 修复空 `response.completed.output` 覆盖前序工具调用的问题
+- [ ] 增加函数调用事件、图片生成和最终结果回归验证
+- [ ] 构建、推送并重新部署远端容器
+- **Status:** in_progress
 
 ## Key Questions
 

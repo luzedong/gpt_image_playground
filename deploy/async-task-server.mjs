@@ -401,6 +401,29 @@ async function readAgentStreamPayload(response, onTextDelta) {
   let fallbackResponseId
   const decoder = new TextDecoder()
 
+  const mergeOutputItems = (items, outputIndices) => {
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index]
+      if (!item || typeof item !== 'object') continue
+      const outputIndex = outputIndices?.[index]
+      let targetIndex = typeof item.id === 'string'
+        ? fallbackOutput.findIndex((existing) => existing?.id === item.id)
+        : -1
+      if (targetIndex < 0 && Number.isInteger(outputIndex) && outputIndex >= 0) {
+        const candidate = fallbackOutput[outputIndex]
+        if (!candidate || candidate.type === item.type) targetIndex = outputIndex
+      }
+      if (targetIndex < 0 && !item.id && item.type) {
+        const sameTypeIndices = fallbackOutput
+          .map((existing, currentIndex) => existing?.type === item.type ? currentIndex : -1)
+          .filter((currentIndex) => currentIndex >= 0)
+        if (sameTypeIndices.length === 1) targetIndex = sameTypeIndices[0]
+      }
+      if (targetIndex >= 0) fallbackOutput[targetIndex] = item
+      else fallbackOutput.push(item)
+    }
+  }
+
   const processEvent = async (block) => {
     const data = block
       .split(/\r?\n/)
@@ -428,18 +451,21 @@ async function readAgentStreamPayload(response, onTextDelta) {
 
     if (event.response && typeof event.response === 'object') {
       if (typeof event.response.id === 'string') fallbackResponseId = event.response.id
-      if (Array.isArray(event.response.output)) fallbackOutput = event.response.output
+      if (Array.isArray(event.response.output)) {
+        mergeOutputItems(
+          event.response.output,
+          type === 'response.completed' ? event.response.output.map((_, index) => index) : undefined,
+        )
+      }
       if (type === 'response.completed') completedPayload = event.response
       return
     }
 
     if (event.item && typeof event.item === 'object') {
-      const outputIndex = Number.isInteger(event.output_index) ? event.output_index : -1
-      if (outputIndex >= 0) {
-        fallbackOutput[outputIndex] = event.item
-      } else {
-        fallbackOutput.push(event.item)
-      }
+      mergeOutputItems(
+        [event.item],
+        [Number.isInteger(event.output_index) ? event.output_index : undefined],
+      )
     }
   }
 
@@ -452,7 +478,9 @@ async function readAgentStreamPayload(response, onTextDelta) {
   buffer += decoder.decode()
   if (buffer.trim()) await processEvent(buffer)
 
-  const payload = completedPayload || { id: fallbackResponseId, output: fallbackOutput.filter(Boolean) }
+  const payload = completedPayload
+    ? { ...completedPayload, output: fallbackOutput.length ? fallbackOutput.filter(Boolean) : completedPayload.output }
+    : { id: fallbackResponseId, output: fallbackOutput.filter(Boolean) }
   if (!Array.isArray(payload.output)) throw new Error('聊天 API 未返回有效响应')
   return payload
 }
