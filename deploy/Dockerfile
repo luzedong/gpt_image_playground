@@ -54,6 +54,9 @@ ENV IMAGE_AILINK_1K_API_URL=https://direct.linkai.pics/v1
 ENV IMAGE_AILINK_1K_API_KEY=
 ENV IMAGE_AILINK_4K_API_URL=https://direct.linkai.pics/v1
 ENV IMAGE_AILINK_4K_API_KEY=
+ENV MIMO_API_URL=https://api.xiaomimimo.com/v1
+ENV MIMO_API_KEY=
+ENV MIMO_ASR_MODEL=mimo-v2.5-asr
 ENV ASYNC_TASK_DATA_DIR=/var/lib/gpt-image-playground/tasks
 ENV ASYNC_TASK_CONCURRENCY=2
 

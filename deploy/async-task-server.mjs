@@ -6,6 +6,7 @@ import { join } from 'node:path'
 const DATA_DIR = process.env.ASYNC_TASK_DATA_DIR || '/var/lib/gpt-image-playground/tasks'
 const MAX_BODY_BYTES = 600 * 1024 * 1024
 const MAX_INPUT_BYTES = 512 * 1024 * 1024
+const MAX_AUDIO_BASE64_BYTES = 10 * 1024 * 1024
 const MAX_1K_PIXELS = 1_572_864
 const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
@@ -221,6 +222,49 @@ async function readApiPayload(response) {
     return text ? JSON.parse(text) : {}
   } catch {
     return { error: { message: text || `HTTP ${response.status}` } }
+  }
+}
+
+function extractSpeechText(payload) {
+  const content = payload?.choices?.[0]?.message?.content
+  if (typeof content === 'string') return content.trim()
+  if (Array.isArray(content)) return content.map((item) => typeof item === 'string' ? item : item?.text || '').join('').trim()
+  return typeof payload?.text === 'string' ? payload.text.trim() : ''
+}
+
+async function handleSpeechToText(req, res) {
+  try {
+    const body = JSON.parse(await readRequestBody(req))
+    const audioData = typeof body.audioData === 'string' ? body.audioData : ''
+    const match = /^data:(audio\/(?:wav|x-wav|mpeg|mp3));base64,([\s\S]+)$/i.exec(audioData)
+    if (!match) throw new Error('录音格式无效，仅支持 WAV 或 MP3')
+    if (Buffer.byteLength(match[2], 'utf8') > MAX_AUDIO_BASE64_BYTES) throw new Error('录音文件不能超过 10 MB')
+    const baseUrl = (process.env.MIMO_API_URL || 'https://api.xiaomimimo.com/v1').replace(/\/+$/, '')
+    const apiKey = process.env.MIMO_API_KEY || ''
+    const model = process.env.MIMO_ASR_MODEL || 'mimo-v2.5-asr'
+    if (!apiKey) throw new Error('服务端语音 API 配置不完整')
+    const response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{
+          role: 'user',
+          content: [{ type: 'input_audio', input_audio: { data: audioData } }],
+        }],
+        asr_options: { language: typeof body.language === 'string' ? body.language : 'zh' },
+      }),
+    }, 120_000)
+    const payload = await readApiPayload(response)
+    if (!response.ok) throw new Error(payload?.error?.message || `语音 API 返回 HTTP ${response.status}`)
+    const text = extractSpeechText(payload)
+    if (!text) throw new Error('语音 API 未返回识别文字')
+    json(res, 200, { text })
+  } catch (error) {
+    json(res, 400, { error: { message: error instanceof Error ? error.message : String(error) } })
   }
 }
 
@@ -972,6 +1016,10 @@ const server = createServer(async (req, res) => {
   const agentMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)$/)
   if (req.method === 'POST' && url.pathname === '/api-agent-tasks') {
     await handleCreateAgent(req, res)
+    return
+  }
+  if (req.method === 'POST' && url.pathname === '/api-speech-to-text') {
+    await handleSpeechToText(req, res)
     return
   }
   if (req.method === 'GET' && agentResultMatch) {
