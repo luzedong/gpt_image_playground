@@ -18,8 +18,6 @@ import { useHintTooltip } from '../hooks/useHintTooltip'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { downloadImageEntriesAsZip, downloadImageIds, formatExportFileTime, getTaskOutputImageZipEntries } from '../lib/downloadImages'
 import { getAwesomePromptImageUrl, type AwesomePromptCase } from '../lib/awesomePromptLibrary'
-import { startWavRecording } from '../lib/audioRecorder'
-import { transcribeSpeech } from '../lib/speechToTextApi'
 import SizePickerModal from './SizePickerModal'
 import PromptLibraryPanel from './PromptLibraryPanel'
 import { CloseIcon, CollapseIcon, ExpandIcon } from './icons'
@@ -335,8 +333,6 @@ export default function InputBar() {
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
   const [paramsExpanded, setParamsExpanded] = useState(false)
-  const [isRecordingSpeech, setIsRecordingSpeech] = useState(false)
-  const [isTranscribingSpeech, setIsTranscribingSpeech] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
   const [showPromptLibrary, setShowPromptLibrary] = useState(false)
   const [promptLibraryScrollTop, setPromptLibraryScrollTop] = useState(0)
@@ -348,7 +344,6 @@ export default function InputBar() {
   const [atImageMenuIndex, setAtImageMenuIndex] = useState(0)
   const [atImageMenuDismissed, setAtImageMenuDismissed] = useState(false)
   const [touchDragPreview, setTouchDragPreview] = useState<{ src: string; x: number; y: number } | null>(null)
-  const speechRecorderRef = useRef<Awaited<ReturnType<typeof startWavRecording>> | null>(null)
   const handleRef = useRef<HTMLDivElement>(null)
   const promptLibraryScrollRef = useRef<HTMLDivElement>(null)
   const dragTouchRef = useRef({ startY: 0, moved: false })
@@ -713,42 +708,6 @@ export default function InputBar() {
       textareaRef.current.focus()
     }
   }, [setPrompt])
-
-  const toggleSpeechInput = useCallback(async () => {
-    if (isRecordingSpeech) {
-      const recorder = speechRecorderRef.current
-      speechRecorderRef.current = null
-      setIsRecordingSpeech(false)
-      if (!recorder) return
-      try {
-        const audioData = await recorder.stop()
-        if (!audioData) return
-        setIsTranscribingSpeech(true)
-        showToast('正在识别语音…', 'info')
-        const text = await transcribeSpeech(audioData)
-        insertPromptTextAtSelection(text)
-        showToast('语音已填入输入框', 'success')
-      } catch (error) {
-        showToast(`语音识别失败：${error instanceof Error ? error.message : String(error)}`, 'error')
-      } finally {
-        setIsTranscribingSpeech(false)
-      }
-      return
-    }
-    if (isTranscribingSpeech) return
-    try {
-      speechRecorderRef.current = await startWavRecording()
-      setIsRecordingSpeech(true)
-      showToast('正在录音，再次点击结束', 'info')
-    } catch (error) {
-      showToast(`无法开始录音：${error instanceof Error ? error.message : String(error)}`, 'error')
-    }
-  }, [insertPromptTextAtSelection, isRecordingSpeech, isTranscribingSpeech, showToast])
-
-  useEffect(() => () => {
-    speechRecorderRef.current?.cancel()
-    speechRecorderRef.current = null
-  }, [])
 
   useEffect(() => {
     setOutputCompressionInput(
@@ -2002,22 +1961,6 @@ export default function InputBar() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m12 3 1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3L7.5 7.5l3.3-1.2L12 3Zm7 9 .7 1.8 1.8.7-1.8.7L19 17l-.7-1.8-1.8-.7 1.8-.7L19 12ZM5 14l.9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14Z" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void toggleSpeechInput()}
-                  hidden
-                  disabled={isTranscribingSpeech}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-sm transition ${isRecordingSpeech
-                    ? 'bg-red-500 text-white hover:bg-red-600'
-                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]'} disabled:cursor-not-allowed disabled:opacity-60`}
-                  aria-label={isRecordingSpeech ? '结束录音' : isTranscribingSpeech ? '正在识别语音' : '语音输入'}
-                  title={isRecordingSpeech ? '结束录音' : isTranscribingSpeech ? '正在识别语音' : '语音输入'}
-                >
-                  <svg className={`h-5 w-5 ${isRecordingSpeech ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3Z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 11a7 7 0 0 1-14 0m7 7v3m-4 0h8" />
-                  </svg>
-                </button>
                 <div
                   className="relative"
                   onMouseEnter={() => setAttachHover(true)}
@@ -2154,22 +2097,6 @@ export default function InputBar() {
                     </>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void toggleSpeechInput()}
-                  hidden
-                  disabled={isTranscribingSpeech}
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm transition ${isRecordingSpeech
-                    ? 'bg-red-500 text-white hover:bg-red-600'
-                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]'} disabled:cursor-not-allowed disabled:opacity-60`}
-                  aria-label={isRecordingSpeech ? '结束录音' : isTranscribingSpeech ? '正在识别语音' : '语音输入'}
-                  title={isRecordingSpeech ? '结束录音' : isTranscribingSpeech ? '正在识别语音' : '语音输入'}
-                >
-                  <svg className={`h-5 w-5 ${isRecordingSpeech ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3Z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 11a7 7 0 0 1-14 0m7 7v3m-4 0h8" />
-                  </svg>
-                </button>
                 <div
                   className="relative flex-1"
                   onMouseEnter={() => setSubmitHover(true)}
