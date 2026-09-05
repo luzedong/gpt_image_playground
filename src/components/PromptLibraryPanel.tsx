@@ -5,6 +5,7 @@ import {
   fetchAwesomePromptManifest,
   filterAwesomePromptCases,
   getAwesomePromptImageUrl,
+  getAwesomePromptCategoryLabel,
   readAwesomePromptFavoriteIds,
   readAwesomePromptManifestCache,
   writeAwesomePromptFavoriteIds,
@@ -124,7 +125,7 @@ function PromptCaseCard({
         <h3 className="line-clamp-2 min-h-8 text-[11px] font-semibold leading-4 text-gray-800 dark:text-gray-200" title={item.title}>{item.title}</h3>
         <p className="mt-1.5 line-clamp-2 min-h-8 text-[10px] leading-4 text-gray-500 dark:text-gray-500" title={item.promptPreview}>{item.promptPreview}</p>
         <div className="mt-2 flex min-h-4 flex-wrap gap-1">
-          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] text-violet-300">{item.category}</span>
+          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] text-violet-300">{getAwesomePromptCategoryLabel(item.category)}</span>
           {item.styles.slice(0, 1).map((style) => <span key={style} className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-white/[0.05]">{style}</span>)}
         </div>
         <div className="mt-2.5 grid grid-cols-2 gap-1.5">
@@ -240,7 +241,7 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
             <span className="sr-only">筛选案例分类</span>
             <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!manifest} className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 text-xs text-gray-700 outline-none transition focus:border-violet-400/70 focus:bg-white disabled:opacity-50 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-300 dark:focus:bg-[#0d1015]">
               <option value="all">全部分类</option>
-              {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+              {categories.map((item) => <option key={item} value={item}>{getAwesomePromptCategoryLabel(item)}</option>)}
             </select>
           </label>
           <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="重新加载素材库" title="重新加载素材库">
@@ -296,14 +297,14 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
             <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-white/[0.08]">
               <div className="min-w-0">
                 <h2 id="prompt-case-detail-title" className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{selectedCase.title}</h2>
-                <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">#{selectedCase.id} · {selectedCase.category}</p>
+                <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">#{selectedCase.id} · {getAwesomePromptCategoryLabel(selectedCase.category)}</p>
               </div>
               <button type="button" onClick={() => setSelectedCase(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:hover:bg-white/[0.06] dark:hover:text-white" aria-label="关闭详情"><LibraryIcon type="close" /></button>
             </div>
             <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
               <img src={getAwesomePromptImageUrl(selectedCase)} alt={selectedCase.imageAlt} className="mx-auto max-h-[42dvh] w-full rounded-xl bg-gray-100 object-contain dark:bg-white/[0.04]" />
               <div className="mt-4 flex flex-wrap gap-1.5">
-                <span className="rounded-md bg-violet-500/10 px-2 py-1 text-[10px] text-violet-700 dark:text-violet-200">{selectedCase.category}</span>
+                <span className="rounded-md bg-violet-500/10 px-2 py-1 text-[10px] text-violet-700 dark:text-violet-200">{getAwesomePromptCategoryLabel(selectedCase.category)}</span>
                 {selectedCase.styles.map((style) => <span key={style} className="rounded-md bg-gray-100 px-2 py-1 text-[10px] text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">{style}</span>)}
               </div>
               <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">

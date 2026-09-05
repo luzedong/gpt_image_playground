@@ -36,6 +36,26 @@ export interface AwesomePromptLibraryOptions {
   timeoutMs?: number
 }
 
+const PROMPT_CATEGORY_LABELS: Record<string, string> = {
+  'Architecture & Spaces': '建筑与空间',
+  'Brand & Logos': '品牌与标志',
+  'Characters & People': '角色与人物',
+  'Charts & Infographics': '图表与信息图',
+  'Documents & Publishing': '文档与出版',
+  'History & Classical Themes': '历史与古典主题',
+  'Illustration & Art': '插画与艺术',
+  'Other Use Cases': '其他应用场景',
+  'Photography & Realism': '摄影与写实',
+  'Posters & Typography': '海报与排版',
+  'Products & E-commerce': '产品与电商',
+  'Scenes & Storytelling': '场景与故事',
+  'UI & Interfaces': '界面与交互',
+}
+
+export function getAwesomePromptCategoryLabel(category: string) {
+  return PROMPT_CATEGORY_LABELS[category] ?? category
+}
+
 let manifestPromise: Promise<AwesomePromptManifest> | null = null
 const AWESOME_PROMPT_MANIFEST_CACHE_KEY = 'gpt-image-playground:prompt-library-manifest'
 const AWESOME_PROMPT_FAVORITES_KEY = 'gpt-image-playground:prompt-library-favorites'
@@ -117,7 +137,7 @@ export function filterAwesomePromptCases(cases: AwesomePromptCase[], query: stri
   return cases.filter((item) => {
     if (category !== 'all' && item.category !== category) return false
     if (!normalizedQuery) return true
-    const searchable = [item.title, item.prompt, item.promptOriginal, item.promptPreview, item.category, ...item.styles, ...item.scenes].filter(Boolean).join(' ').toLocaleLowerCase()
+    const searchable = [item.title, item.prompt, item.promptOriginal, item.promptPreview, item.category, getAwesomePromptCategoryLabel(item.category), ...item.styles, ...item.scenes].filter(Boolean).join(' ').toLocaleLowerCase()
     return searchable.includes(normalizedQuery)
   })
 }
