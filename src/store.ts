@@ -2753,6 +2753,7 @@ async function syncServerManagedAgentProgress(
           assistantMessageId,
           outputTaskIds,
           responseOutput: progress.outputItems,
+          imageReady: progress.images?.length ? true : item.imageReady,
           status: 'running',
           error: null,
           finishedAt: null,

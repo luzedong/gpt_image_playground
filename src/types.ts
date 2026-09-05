@@ -291,6 +291,8 @@ export interface AgentRound {
   outputTaskIds: string[]
   /** 服务端 Agent 任务 ID，用于页面切换/关闭后继续整轮对话 */
   serverTaskId?: string
+  /** 图片工具已返回结果，但 Agent 仍在生成最终文字回复 */
+  imageReady?: boolean
   responseId?: string
   responseOutput?: ResponsesOutputItem[]
   status: AgentRoundStatus
