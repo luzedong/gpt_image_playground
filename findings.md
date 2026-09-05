@@ -297,3 +297,11 @@
 - 前端服务端 Agent 流程在完成态会单独请求 `/result`，理论上能拿到上述图片；进度版本号失效仍会导致生成中图片无法增量同步，并增加页面切换/恢复时只看到完成文本的概率。
 - 线上最近普通 image 任务的 `.json` 也有 `result.images.length=1`，需要补强客户端完成结果的可诊断校验，避免把已有服务端结果误报为空。
 - 已在远端容器复现普通任务接口缺陷：`GET /api-tasks/:id` 返回 `status=done` 但没有 `result`，响应约 153 bytes；任务文件本身有图片结果。根因是路由调用 `publicTask(task)` 的默认 `includeResult=false`，而客户端完成态直接从该响应读取 `result.images`。
+
+## Phase 24 — 素材库更新与翻译排查（2026-09-05）
+
+- 本地素材快照当前为 529 条案例、约 130 万字节清单；按 CJK 字符统计，289 条提示词含中文，240 条提示词已为非中文文本，并非全部英文。
+- 上游 `freestylefly/awesome-gpt-image-2` 的 `main` 当前清单为 541 条案例，ID 范围包含新增案例，需先运行既有同步脚本更新图片和来源文件。
+- 用户已确认目标语言为简体中文；目标是让素材库 `prompt`/`promptPreview` 全部使用准确中文，同时把原始提示词保留在 `promptOriginal`。翻译时保留提示词中的品牌名、占位符、XML/引用标记、尺寸参数和明确要求在图片中显示的原文，避免改变生图语义。
+- 使用服务端已有的 ai-pixel `gpt-5.6-luna` 配置调用 Responses API；API Key 只在远端进程环境中读取，不写入仓库、日志或翻译结果。
+- 首次批量翻译设置 3 并发时，ai-pixel 返回 `Concurrency limit exceeded for account, please retry later`；已改为支持 429/并发错误指数退避，并逐批保存远端临时缓存，后续使用单并发继续。之前误启动的英文翻译进程已停止，不能使用其结果。

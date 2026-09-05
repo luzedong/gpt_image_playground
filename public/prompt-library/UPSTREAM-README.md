@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/freestylefly/awesome-gpt-image-2"><img src="https://img.shields.io/github/stars/freestylefly/awesome-gpt-image-2?style=flat-square&color=rgb(25%2C%20121%2C%20255)" alt="Stars"></a>
   <a href="https://github.com/freestylefly/awesome-gpt-image-2"><img src="https://img.shields.io/github/forks/freestylefly/awesome-gpt-image-2?style=flat-square&color=green" alt="Forks"></a>
-  <a href="https://github.com/freestylefly/awesome-gpt-image-2"><img src="https://img.shields.io/badge/Cases-532-blueviolet?style=flat-square" alt="Cases"></a>
+  <a href="https://github.com/freestylefly/awesome-gpt-image-2"><img src="https://img.shields.io/badge/Cases-544-blueviolet?style=flat-square" alt="Cases"></a>
   <a href="https://github.com/freestylefly/awesome-gpt-image-2"><img src="https://img.shields.io/badge/100%25-Original_AI_Rewritten-green?style=flat-square" alt="Original"></a>
   <a href="https://github.com/sponsors/freestylefly"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ff69b4?style=flat-square" alt="Sponsor"></a>
 </p>
@@ -67,7 +67,7 @@ The core goal is simple: compress prose-style prompts into structured protocols.
 
 - [Full case gallery](docs/gallery.md)
 - [Gallery Part 1: cases 1-165](docs/gallery-part-1.md)
-- [Gallery Part 2: cases 166-532](docs/gallery-part-2.md)
+- [Gallery Part 2: cases 166-544](docs/gallery-part-2.md)
 - [Industrial prompt templates and pitfalls guide](docs/templates.md)
 - [Agent skill: GPT-Image2 Style Library](agents/skills/gpt-image-2-style-library/SKILL.md)
 - [MIT License](LICENSE)
@@ -88,13 +88,13 @@ Start with the case album to find a visual direction, then open the prompt templ
       <a href="docs/gallery.md#cat-ui"><strong>View Cases</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>📊 Charts & Infographics</strong><br><sub>52 cases</sub></p>
+      <p><strong>📊 Charts & Infographics</strong><br><sub>53 cases</sub></p>
       <a href="docs/gallery.md#cat-infographic"><img src="data/images/category-covers/infographic.jpg" alt="Charts and infographics" width="220"></a><br>
       <sub>Infographics, knowledge maps, technical explainers, and structured diagrams.</sub><br>
       <a href="docs/gallery.md#cat-infographic"><strong>View Cases</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>📰 Posters & Typography</strong><br><sub>86 cases</sub></p>
+      <p><strong>📰 Posters & Typography</strong><br><sub>90 cases</sub></p>
       <a href="docs/gallery.md#cat-poster"><img src="data/images/category-covers/poster.jpg" alt="Posters and typography" width="220"></a><br>
       <sub>Event posters, covers, type-driven visuals, and strong layout compositions.</sub><br>
       <a href="docs/gallery.md#cat-poster"><strong>View Cases</strong></a>
@@ -102,7 +102,7 @@ Start with the case album to find a visual direction, then open the prompt templ
   </tr>
   <tr>
     <td width="33%" valign="top" align="center">
-      <p><strong>🛍️ Products & E-commerce</strong><br><sub>41 cases</sub></p>
+      <p><strong>🛍️ Products & E-commerce</strong><br><sub>42 cases</sub></p>
       <a href="docs/gallery.md#cat-product"><img src="data/images/category-covers/product.jpg" alt="Products and e-commerce" width="220"></a><br>
       <sub>Product shots, detail pages, packaging, selling points, and ads.</sub><br>
       <a href="docs/gallery.md#cat-product"><strong>View Cases</strong></a>
@@ -122,19 +122,19 @@ Start with the case album to find a visual direction, then open the prompt templ
   </tr>
   <tr>
     <td width="33%" valign="top" align="center">
-      <p><strong>📷 Photography & Realism</strong><br><sub>77 cases</sub></p>
+      <p><strong>📷 Photography & Realism</strong><br><sub>78 cases</sub></p>
       <a href="docs/gallery.md#cat-photo"><img src="data/images/category-covers/photo.jpg" alt="Photography and realism" width="220"></a><br>
       <sub>Portraits, phone photography, film texture, and commercial photography.</sub><br>
       <a href="docs/gallery.md#cat-photo"><strong>View Cases</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>🎨 Illustration & Art</strong><br><sub>58 cases</sub></p>
+      <p><strong>🎨 Illustration & Art</strong><br><sub>59 cases</sub></p>
       <a href="docs/gallery.md#cat-illustration"><img src="data/images/category-covers/illustration.jpg" alt="Illustration and art" width="220"></a><br>
       <sub>Illustration, art styles, material experiments, and decorative images.</sub><br>
       <a href="docs/gallery.md#cat-illustration"><strong>View Cases</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>🧍 Characters & People</strong><br><sub>29 cases</sub></p>
+      <p><strong>🧍 Characters & People</strong><br><sub>31 cases</sub></p>
       <a href="docs/gallery.md#cat-character"><img src="data/images/category-covers/character.jpg" alt="Characters and people" width="220"></a><br>
       <sub>Character design, pose references, cards, and 3D toys.</sub><br>
       <a href="docs/gallery.md#cat-character"><strong>View Cases</strong></a>
@@ -142,7 +142,7 @@ Start with the case album to find a visual direction, then open the prompt templ
   </tr>
   <tr>
     <td width="33%" valign="top" align="center">
-      <p><strong>🎬 Scenes & Storytelling</strong><br><sub>20 cases</sub></p>
+      <p><strong>🎬 Scenes & Storytelling</strong><br><sub>21 cases</sub></p>
       <a href="docs/gallery.md#cat-scene"><img src="data/images/category-covers/scene.jpg" alt="Scenes and storytelling" width="220"></a><br>
       <sub>Storyboards, narrative scenes, livestream frames, and worldbuilding.</sub><br>
       <a href="docs/gallery.md#cat-scene"><strong>View Cases</strong></a>
@@ -154,7 +154,7 @@ Start with the case album to find a visual direction, then open the prompt templ
       <a href="docs/gallery.md#cat-history"><strong>View Cases</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>📚 Documents & Publishing</strong><br><sub>10 cases</sub></p>
+      <p><strong>📚 Documents & Publishing</strong><br><sub>11 cases</sub></p>
       <a href="docs/gallery.md#cat-document"><img src="data/images/category-covers/document.jpg" alt="Documents and publishing" width="220"></a><br>
       <sub>White papers, manuals, encyclopedic plates, and publishing layouts.</sub><br>
       <a href="docs/gallery.md#cat-document"><strong>View Cases</strong></a>
@@ -170,14 +170,14 @@ Start with the case album to find a visual direction, then open the prompt templ
     <td width="33%" valign="top" align="center">
       <h4>🖼️ Full Gallery</h4>
       <a href="docs/gallery.md"><img src="data/images/category-covers/gallery.jpg" alt="Full gallery" width="220"></a><br>
-      <sub>Browse all 532 cases by gallery part and category.</sub><br>
+      <sub>Browse all 544 cases by gallery part and category.</sub><br>
       <a href="docs/gallery.md"><strong>Open Gallery</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
       <h4>⭐ Latest Additions</h4>
-      <a href="docs/gallery-part-2.md#case-532"><img src="data/images/case532.jpg" alt="Latest additions" width="220"></a><br>
+      <a href="docs/gallery-part-2.md#case-544"><img src="data/images/case544.jpg" alt="Latest additions" width="220"></a><br>
       <sub>The newest community cases and workflows collected in the repo.</sub><br>
-      <a href="docs/gallery-part-2.md#case-532"><strong>View Latest</strong></a>
+      <a href="docs/gallery-part-2.md#case-544"><strong>View Latest</strong></a>
     </td>
   </tr>
 </table>
@@ -308,7 +308,7 @@ The skill source lives at [`agents/skills/gpt-image-2-style-library`](agents/ski
 
 ## 🔐 Website Auth & Generation
 
-The visual site includes login-gated case generation powered by Supabase Auth, Supabase Postgres, and a Vercel Function proxy for the GPT Image 2 API.
+The visual site supports direct APIMart generation with a personal browser-only API key. Without a personal key, signed-in users continue through Supabase Auth, platform credits, and the server-side APIMart key.
 
 Required Vercel environment variables:
 
@@ -317,8 +317,7 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPER_ADMIN_EMAILS=2689458656@qq.com,canghe0818@gmail.com
-CIYUAN_API_KEY=
-CIYUAN_BASE_URL=https://ciyuan.today
+APIMART_API_KEY=
 APP_URL=https://gpt-image2.canghe.ai
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
@@ -338,6 +337,7 @@ Setup checklist:
 - Apply [`supabase/migrations/20260512090000_google_account_center.sql`](supabase/migrations/20260512090000_google_account_center.sql) to add account usage summaries and forced credit charging for super admins.
 - Apply [`supabase/migrations/20260512143000_pricing_admin_metrics.sql`](supabase/migrations/20260512143000_pricing_admin_metrics.sql) to update the `$5 / 300 credits` catalog and add admin dashboard metrics.
 - Apply [`supabase/migrations/20260515090000_case_favorites.sql`](supabase/migrations/20260515090000_case_favorites.sql) to add per-user case favorites.
+- Apply [`supabase/migrations/20260828090000_apimart_generation_tasks.sql`](supabase/migrations/20260828090000_apimart_generation_tasks.sql) to add APIMart task IDs, actual USD costs, expiring result URLs, and provider indexes.
 - Add `https://gpt-image2.canghe.ai` and local dev URLs such as `http://127.0.0.1:5173` to Supabase Auth redirect URLs.
 - Enable the Google Provider after adding Google OAuth credentials in the Supabase Dashboard.
 - To force Google-only sign-in, disable the Email Provider in Supabase Auth settings.
@@ -447,42 +447,42 @@ Only the latest collection and import run is shown here. Older imports stay in t
 <table>
   <tr>
     <td width="33%" valign="top" align="center">
-      <p><strong>Case 527: Rio Travel Ticket Pop-Up Diorama</strong></p>
-      <a href="docs/gallery-part-2.md#case-527"><img src="data/images/case527.jpg" alt="Rio Travel Ticket Pop-Up Diorama" width="150"></a><br>
-      <sub>A vintage travel-ticket prompt that turns Rio landmarks, map notes, and miniature streets into one pop-up postcard.</sub><br>
-      <a href="docs/gallery-part-2.md#case-527"><strong>View Case</strong></a>
+      <p><strong>Case 539: Raw Sketchy Portrait Poster</strong></p>
+      <a href="docs/gallery-part-2.md#case-539"><img src="data/images/case539.jpg" alt="Raw Sketchy Portrait Poster" width="150"></a><br>
+      <sub>A customizable rough-ink portrait poster prompt combining an oversized subject, close companion, minimal scenery, restrained palette, and intentionally imperfect print texture.</sub><br>
+      <a href="docs/gallery-part-2.md#case-539"><strong>View Case</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>Case 528: Chibi Portrait on a Real Holiday Street</strong></p>
-      <a href="docs/gallery-part-2.md#case-528"><img src="data/images/case528.jpg" alt="Chibi Portrait on a Real Holiday Street" width="150"></a><br>
-      <sub>A photo-editing prompt that keeps the real city background while turning the subject into a warm hand-drawn chibi character.</sub><br>
-      <a href="docs/gallery-part-2.md#case-528"><strong>View Case</strong></a>
+      <p><strong>Case 540: Dreamlike Futuristic World Poster</strong></p>
+      <a href="docs/gallery-part-2.md#case-540"><img src="data/images/case540.jpg" alt="Dreamlike Futuristic World Poster" width="150"></a><br>
+      <sub>A vertical editorial art-poster prompt for surreal future cities with sculptural architecture, oversized plants, tiny people, vintage travel texture, and luxury pacing.</sub><br>
+      <a href="docs/gallery-part-2.md#case-540"><strong>View Case</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>Case 529: Cloud-Balloon Mountain Ridge Portrait</strong></p>
-      <a href="docs/gallery-part-2.md#case-529"><img src="data/images/case529.jpg" alt="Cloud-Balloon Mountain Ridge Portrait" width="150"></a><br>
-      <sub>A travel-fashion portrait prompt with a giant cloud balloon, believable strings, mountain depth, and modest wardrobe control.</sub><br>
-      <a href="docs/gallery-part-2.md#case-529"><strong>View Case</strong></a>
+      <p><strong>Case 541: 50/50 Mixed-Media Memory Card</strong></p>
+      <a href="docs/gallery-part-2.md#case-541"><img src="data/images/case541.jpg" alt="50/50 Mixed-Media Memory Card" width="150"></a><br>
+      <sub>A reference-photo editing prompt that keeps the top photo intact and converts the lower half into a handmade paper memory card with wax-crayon sketching.</sub><br>
+      <a href="docs/gallery-part-2.md#case-541"><strong>View Case</strong></a>
     </td>
   </tr>
   <tr>
     <td width="33%" valign="top" align="center">
-      <p><strong>Case 530: Doodle Characters on Photo Background</strong></p>
-      <a href="docs/gallery-part-2.md#case-530"><img src="data/images/case530.jpg" alt="Doodle Characters on Photo Background" width="150"></a><br>
-      <sub>A controlled edit prompt that preserves the original photographic background and replaces only people with naive doodle characters.</sub><br>
-      <a href="docs/gallery-part-2.md#case-530"><strong>View Case</strong></a>
+      <p><strong>Case 542: Black-and-White Typographic Portrait Poster</strong></p>
+      <a href="docs/gallery-part-2.md#case-542"><img src="data/images/case542.jpg" alt="Black-and-White Typographic Portrait Poster" width="150"></a><br>
+      <sub>A high-contrast monochrome typographic portrait prompt that fuses side-profile silhouettes, rough ink texture, microtext, and a large readable text block.</sub><br>
+      <a href="docs/gallery-part-2.md#case-542"><strong>View Case</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>Case 531: Crystal-Frame Country Travel Campaign</strong></p>
-      <a href="docs/gallery-part-2.md#case-531"><img src="data/images/case531.jpg" alt="Crystal-Frame Country Travel Campaign" width="150"></a><br>
-      <sub>A luxury travel campaign prompt using a transparent crystal frame, mirrored reflection, national landmarks, and refined editorial type.</sub><br>
-      <a href="docs/gallery-part-2.md#case-531"><strong>View Case</strong></a>
+      <p><strong>Case 543: Travel Souvenir Enamel Pin Badge</strong></p>
+      <a href="docs/gallery-part-2.md#case-543"><img src="data/images/case543.jpg" alt="Travel Souvenir Enamel Pin Badge" width="150"></a><br>
+      <sub>A product-design prompt that turns a travel photo into a glossy enamel pin badge with gold dividers, scene hierarchy, simplified figure rules, and fabric backdrop.</sub><br>
+      <a href="docs/gallery-part-2.md#case-543"><strong>View Case</strong></a>
     </td>
     <td width="33%" valign="top" align="center">
-      <p><strong>Case 532: Six-Panel Lemon Drink Micro Campaign</strong></p>
-      <a href="docs/gallery-part-2.md#case-532"><img src="data/images/case532.jpg" alt="Six-Panel Lemon Drink Micro Campaign" width="150"></a><br>
-      <sub>A fictional lemon-drink campaign with a strict six-panel grid, consistent horizon, action rhythm, and a hero product climax.</sub><br>
-      <a href="docs/gallery-part-2.md#case-532"><strong>View Case</strong></a>
+      <p><strong>Case 544: Preschool Vocabulary Learning Card</strong></p>
+      <a href="docs/gallery-part-2.md#case-544"><img src="data/images/case544.jpg" alt="Preschool Vocabulary Learning Card" width="150"></a><br>
+      <sub>A preschool learning-card prompt for clean object-and-part vocabulary layouts with realistic produce, dotted arrows, simple illustration, and clear labels.</sub><br>
+      <a href="docs/gallery-part-2.md#case-544"><strong>View Case</strong></a>
     </td>
   </tr>
 </table>

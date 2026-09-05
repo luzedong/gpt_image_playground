@@ -20,6 +20,7 @@ const manifest = {
       title: '城市仪表盘',
       image: '/images/case1.jpg',
       prompt: 'A precise urban dashboard',
+      promptOriginal: '一个精确的城市仪表盘',
       category: 'UI & Interfaces',
       styles: ['UI'],
       scenes: ['Tech'],
@@ -44,6 +45,7 @@ describe('awesomePromptLibrary', () => {
     expect(normalized.cases).toHaveLength(2)
     expect(normalized.cases[0]?.sourceUrl).toBe('')
     expect(normalized.cases[0]?.imageAlt).toBe('城市仪表盘')
+    expect(normalized.cases[0]?.promptOriginal).toBe('一个精确的城市仪表盘')
   })
 
   it('maps repository image paths to same-origin case assets', () => {

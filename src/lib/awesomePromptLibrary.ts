@@ -11,6 +11,7 @@ export interface AwesomePromptCase {
   sourceLabel: string
   sourceUrl: string
   prompt: string
+  promptOriginal?: string
   promptPreview: string
   category: string
   styles: string[]
@@ -65,6 +66,7 @@ function normalizeCase(value: unknown): AwesomePromptCase | null {
 
   const sourceUrl = asString(item.sourceUrl)
   const githubUrl = asString(item.githubUrl)
+  const promptOriginal = asString(item.promptOriginal)
   return {
     id,
     title,
@@ -73,6 +75,7 @@ function normalizeCase(value: unknown): AwesomePromptCase | null {
     sourceLabel: asString(item.sourceLabel, '公开案例'),
     sourceUrl: isHttpUrl(sourceUrl) ? sourceUrl : '',
     prompt,
+    ...(promptOriginal ? { promptOriginal } : {}),
     promptPreview: asString(item.promptPreview, prompt.replace(/\s+/g, ' ').slice(0, 220)),
     category: asString(item.category, '其他应用场景'),
     styles: asStringArray(item.styles),
@@ -112,7 +115,7 @@ export function filterAwesomePromptCases(cases: AwesomePromptCase[], query: stri
   return cases.filter((item) => {
     if (category !== 'all' && item.category !== category) return false
     if (!normalizedQuery) return true
-    const searchable = [item.title, item.promptPreview, item.category, ...item.styles, ...item.scenes].join(' ').toLocaleLowerCase()
+    const searchable = [item.title, item.prompt, item.promptOriginal, item.promptPreview, item.category, ...item.styles, ...item.scenes].filter(Boolean).join(' ').toLocaleLowerCase()
     return searchable.includes(normalizedQuery)
   })
 }
