@@ -149,6 +149,7 @@ function PromptCaseCard({
 
 export default function PromptLibraryPanel({ canImportImage, importingId, onImportImage, onUsePrompt }: PromptLibraryPanelProps) {
   const [manifest, setManifest] = useState<AwesomePromptManifest | null>(null)
+  const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [visibleCount, setVisibleCount] = useState(readVisibleCount)
@@ -224,11 +225,11 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
 
   return (
     <div className="space-y-3" data-prompt-library>
-      <div className="sticky top-0 z-20 -mx-1 space-y-2 bg-white/95 px-1 pb-2 pt-1 backdrop-blur-xl dark:bg-gray-900/95">
+      <div className="sticky top-0 z-20 -mx-1 space-y-2 bg-white/95 px-1 pb-2 pt-0 backdrop-blur-xl dark:bg-gray-900/95">
         <label className="relative block">
           <span className="sr-only">搜索 Prompt 案例</span>
           <LibraryIcon type="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标题、风格或 Prompt" className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-violet-400/70 focus:bg-white focus:ring-2 focus:ring-violet-500/10 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-200 dark:placeholder:text-gray-700 dark:focus:bg-[#0d1015]" />
+          <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索标题、风格或 Prompt" className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-violet-400/70 focus:bg-white focus:ring-2 focus:ring-violet-500/10 dark:border-white/[0.08] dark:bg-[#0d1015] dark:text-gray-200 dark:placeholder:text-gray-700 dark:focus:bg-[#0d1015]" />
         </label>
 
         <div className="flex min-w-0 gap-2">
@@ -244,9 +245,7 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
               {categories.map((item) => <option key={item} value={item}>{getAwesomePromptCategoryLabel(item)}</option>)}
             </select>
           </label>
-          <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="重新加载素材库" title="重新加载素材库">
-            <LibraryIcon type="refresh" />
-          </button>
+          <button type="button" onClick={() => setQuery(queryInput.trim())} className="h-11 shrink-0 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60">查询</button>
         </div>
       </div>
 

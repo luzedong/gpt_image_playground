@@ -1721,7 +1721,7 @@ export default function InputBar() {
               </button>
             </div>
             <div className="relative min-h-0 flex-1">
-              <div ref={promptLibraryScrollRef} onScroll={handlePromptLibraryScroll} className="h-full overflow-y-auto p-3 sm:p-5">
+              <div ref={promptLibraryScrollRef} onScroll={handlePromptLibraryScroll} className="h-full overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
                 <PromptLibraryPanel
                   canImportImage={inputImages.length < API_MAX_IMAGES}
                   importingId={importingPromptId}
