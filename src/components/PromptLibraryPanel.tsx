@@ -5,7 +5,9 @@ import {
   fetchAwesomePromptManifest,
   filterAwesomePromptCases,
   getAwesomePromptImageUrl,
+  readAwesomePromptFavoriteIds,
   readAwesomePromptManifestCache,
+  writeAwesomePromptFavoriteIds,
   writeAwesomePromptManifestCache,
   type AwesomePromptCase,
   type AwesomePromptManifest,
@@ -38,7 +40,7 @@ function writeVisibleCount(value: number) {
   }
 }
 
-function LibraryIcon({ type, className = 'h-4 w-4' }: { type: 'search' | 'refresh' | 'download' | 'external' | 'sparkles' | 'close' | 'eye'; className?: string }) {
+function LibraryIcon({ type, className = 'h-4 w-4' }: { type: 'search' | 'refresh' | 'download' | 'external' | 'sparkles' | 'close' | 'eye' | 'star'; className?: string }) {
   const paths = {
     search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
     refresh: <><path d="M20 11a8 8 0 0 0-14.9-4L3 10" /><path d="M3 4v6h6" /><path d="M4 13a8 8 0 0 0 14.9 4L21 14" /><path d="M21 20v-6h-6" /></>,
@@ -47,6 +49,7 @@ function LibraryIcon({ type, className = 'h-4 w-4' }: { type: 'search' | 'refres
     sparkles: <><path d="m12 3-1.2 3.2L7.5 7.5l3.3 1.3L12 12l1.2-3.2 3.3-1.3-3.3-1.3L12 3Z" /><path d="m5 13-.8 2.2L2 16l2.2.8L5 19l.8-2.2L5 13Z" /></>,
     close: <><path d="m6 6 12 12" /><path d="m18 6-12 12" /></>,
     eye: <><path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z" /><circle cx="12" cy="12" r="2.5" /></>,
+    star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" />,
   }
 
   return <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">{paths[type]}</svg>
@@ -75,6 +78,8 @@ function PromptCaseCard({
   onImportImage,
   onUsePrompt,
   onOpenDetails,
+  favorite,
+  onToggleFavorite,
 }: {
   item: AwesomePromptCase
   canImportImage: boolean
@@ -82,13 +87,16 @@ function PromptCaseCard({
   onImportImage: () => void
   onUsePrompt: () => void
   onOpenDetails: () => void
+  favorite: boolean
+  onToggleFavorite: () => void
 }) {
   const [imageFailed, setImageFailed] = useState(false)
   const imageUrl = getAwesomePromptImageUrl(item)
 
   return (
     <article className="group overflow-hidden rounded-xl border border-gray-200/80 bg-white transition duration-200 hover:border-violet-300 hover:shadow-md dark:border-white/[0.07] dark:bg-[#0d1015] dark:hover:border-violet-400/30 dark:hover:bg-[#111621]">
-      <button type="button" onClick={onOpenDetails} className="relative block aspect-[4/3] w-full overflow-hidden bg-gray-100 text-left dark:bg-[#171c27] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-violet-400/70" aria-label={`查看「${item.title}」详情`} title="查看详情">
+      <div className="relative block aspect-[4/3] w-full overflow-hidden bg-gray-100 dark:bg-[#171c27]">
+        <button type="button" onClick={onOpenDetails} className="absolute inset-0 z-0 block h-full w-full text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-violet-400/70" aria-label={`查看「${item.title}」详情`} title="查看详情">
         {imageFailed ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-[10px] text-gray-500 dark:text-gray-600">
             <LibraryIcon type="sparkles" className="h-5 w-5 text-gray-400 dark:text-gray-700" />
@@ -109,7 +117,9 @@ function PromptCaseCard({
         {item.featured && <span className="absolute left-2 top-2 rounded-md bg-violet-600/90 px-1.5 py-1 text-[9px] font-semibold text-white shadow-lg">精选</span>}
         <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[9px] text-gray-300 backdrop-blur-sm">#{item.id}</span>
         <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 text-[9px] text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 group-focus-within:opacity-100"><LibraryIcon type="eye" className="h-3 w-3" />查看详情</span>
-      </button>
+        </button>
+        <button type="button" onClick={onToggleFavorite} className={`absolute right-2 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition focus:outline-none focus:ring-2 focus:ring-violet-400/70 ${favorite ? 'bg-amber-400 text-white' : 'bg-black/60 text-white/80 hover:bg-black/75'}`} aria-label={favorite ? '取消收藏' : '收藏素材'} title={favorite ? '取消收藏' : '收藏素材'}><LibraryIcon type="star" className="h-4 w-4" /></button>
+      </div>
       <div className="p-2.5">
         <h3 className="line-clamp-2 min-h-8 text-[11px] font-semibold leading-4 text-gray-800 dark:text-gray-200" title={item.title}>{item.title}</h3>
         <p className="mt-1.5 line-clamp-2 min-h-8 text-[10px] leading-4 text-gray-500 dark:text-gray-500" title={item.promptPreview}>{item.promptPreview}</p>
@@ -144,6 +154,8 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedCase, setSelectedCase] = useState<AwesomePromptCase | null>(null)
+  const [favoriteIds, setFavoriteIds] = useState(() => new Set(readAwesomePromptFavoriteIds()))
+  const [showFavorites, setShowFavorites] = useState(false)
   const filterInitialized = useRef(false)
 
   useEffect(() => {
@@ -180,8 +192,8 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
   }, [loadManifest])
 
   const filteredCases = useMemo(
-    () => manifest ? filterAwesomePromptCases(manifest.cases, query, category) : [],
-    [category, manifest, query],
+    () => manifest ? filterAwesomePromptCases(manifest.cases.filter((item) => !showFavorites || favoriteIds.has(item.id)), query, category) : [],
+    [category, favoriteIds, manifest, query, showFavorites],
   )
   const visibleCases = filteredCases.slice(0, visibleCount)
   const categories = manifest?.categories ?? []
@@ -193,11 +205,21 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
     }
     setVisibleCount(PAGE_SIZE)
     writeVisibleCount(PAGE_SIZE)
-  }, [category, query])
+  }, [category, query, showFavorites])
 
   useEffect(() => {
     writeVisibleCount(visibleCount)
   }, [visibleCount])
+
+  const toggleFavorite = (id: number) => {
+    setFavoriteIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      writeAwesomePromptFavoriteIds([...next])
+      return next
+    })
+  }
 
   return (
     <div className="space-y-3" data-prompt-library>
@@ -218,6 +240,12 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
         <button type="button" onClick={() => { clearAwesomePromptManifestCache(); void loadManifest() }} disabled={loading} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:border-gray-300 hover:bg-white hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400/60 dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.18] dark:hover:bg-white/[0.05] dark:hover:text-gray-200 disabled:animate-pulse disabled:opacity-50" aria-label="重新加载素材库" title="重新加载素材库">
           <LibraryIcon type="refresh" />
         </button>
+      </div>
+
+      <div className="flex gap-2 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.04]">
+        {([['all', '全部素材'], ['favorites', `我的收藏${favoriteIds.size ? ` (${favoriteIds.size})` : ''}`]] as const).map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setShowFavorites(value === 'favorites')} className={`flex h-10 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-400/60 ${showFavorites === (value === 'favorites') ? 'bg-white text-violet-700 shadow-sm dark:bg-white/[0.1] dark:text-violet-200' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}><LibraryIcon type="star" className="h-3.5 w-3.5" />{label}</button>
+        ))}
       </div>
 
       {loading && <LibrarySkeleton />}
@@ -247,6 +275,8 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
                   onImportImage={() => onImportImage(item)}
                   onUsePrompt={() => onUsePrompt(item)}
                   onOpenDetails={() => setSelectedCase(item)}
+                  favorite={favoriteIds.has(item.id)}
+                  onToggleFavorite={() => toggleFavorite(item.id)}
                 />
               ))}
             </div>
@@ -283,6 +313,7 @@ export default function PromptLibraryPanel({ canImportImage, importingId, onImpo
                 <button type="button" onClick={() => { onUsePrompt(selectedCase); setSelectedCase(null) }} className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60"><LibraryIcon type="sparkles" className="h-4 w-4" />填入 Prompt</button>
                 <button type="button" onClick={() => onImportImage(selectedCase)} disabled={!canImportImage || importingId === selectedCase.id} className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-cyan-400/15 dark:bg-cyan-500/[0.06] dark:text-cyan-200"><LibraryIcon type="download" className="h-4 w-4" />{importingId === selectedCase.id ? '导入中…' : '导入参考图'}</button>
               </div>
+              <button type="button" onClick={() => toggleFavorite(selectedCase.id)} className={`mt-2 flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-400/60 ${favoriteIds.has(selectedCase.id) ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200' : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]'}`}><LibraryIcon type="star" className="h-4 w-4" />{favoriteIds.has(selectedCase.id) ? '已收藏' : '收藏素材'}</button>
               <a href={selectedCase.sourceUrl || selectedCase.githubUrl} target="_blank" rel="noopener noreferrer" className="mt-3 flex h-11 items-center justify-center gap-1 text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-800 dark:hover:text-gray-200"><LibraryIcon type="external" className="h-3.5 w-3.5" />查看来源</a>
             </div>
           </div>

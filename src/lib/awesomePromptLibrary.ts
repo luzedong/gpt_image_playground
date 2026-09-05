@@ -38,6 +38,7 @@ export interface AwesomePromptLibraryOptions {
 
 let manifestPromise: Promise<AwesomePromptManifest> | null = null
 const AWESOME_PROMPT_MANIFEST_CACHE_KEY = 'gpt-image-playground:prompt-library-manifest'
+const AWESOME_PROMPT_FAVORITES_KEY = 'gpt-image-playground:prompt-library-favorites'
 
 function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback
@@ -140,6 +141,24 @@ export function writeAwesomePromptManifestCache(manifest: AwesomePromptManifest)
     window.localStorage.setItem(AWESOME_PROMPT_MANIFEST_CACHE_KEY, JSON.stringify(manifest))
   } catch {
     // 存储空间不足或隐私模式禁用时，仍可正常使用网络素材库。
+  }
+}
+
+export function readAwesomePromptFavoriteIds(): number[] {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(AWESOME_PROMPT_FAVORITES_KEY) ?? '[]')
+    if (!Array.isArray(value)) return []
+    return value.filter((id): id is number => Number.isInteger(id) && id > 0)
+  } catch {
+    return []
+  }
+}
+
+export function writeAwesomePromptFavoriteIds(ids: number[]) {
+  try {
+    window.localStorage.setItem(AWESOME_PROMPT_FAVORITES_KEY, JSON.stringify([...new Set(ids)].sort((a, b) => a - b)))
+  } catch {
+    // 某些隐私模式下 localStorage 不可用，不影响素材库使用。
   }
 }
 
