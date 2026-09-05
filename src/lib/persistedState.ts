@@ -130,6 +130,15 @@ export function migratePersistedState(persistedState: unknown, version?: number)
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
   }
   if ((version ?? 0) < 4) migrated.appMode = 'agent'
+  if ((version ?? 0) < 5) {
+    if (isRecord(migrated.settings)) {
+      migrated.settings = { ...migrated.settings, persistInputOnRestart: false }
+    }
+    delete migrated.prompt
+    delete migrated.inputImages
+    delete migrated.galleryInputDraft
+    delete migrated.agentInputDrafts
+  }
   if ((version ?? 0) >= 3 || !isRecord(migrated.settings)) return migrated
 
   const settings = migrated.settings

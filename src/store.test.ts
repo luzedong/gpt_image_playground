@@ -673,6 +673,7 @@ describe('input persistence setting', () => {
   })
 
   it('persists input when restart input restore is enabled', () => {
+    useStore.setState({ settings: { ...DEFAULT_SETTINGS, persistInputOnRestart: true } })
     const persisted = getPersistedState(useStore.getState())
 
     expect(persisted.prompt).toBe('prompt')
@@ -713,7 +714,11 @@ describe('input persistence setting', () => {
   })
 
   it('writes empty input when persisted input is cleared', () => {
-    useStore.setState({ prompt: '', inputImages: [] })
+    useStore.setState({
+      settings: { ...DEFAULT_SETTINGS, persistInputOnRestart: true },
+      prompt: '',
+      inputImages: [],
+    })
 
     const persisted = getPersistedState(useStore.getState())
 
@@ -2910,6 +2915,7 @@ describe('agent draft lifecycle', () => {
     useStore.setState({
       settings: normalizeSettings({
         ...DEFAULT_SETTINGS,
+        persistInputOnRestart: true,
         profiles: [responsesProfile],
         activeProfileId: responsesProfile.id,
       }),

@@ -118,6 +118,22 @@ describe('persisted state codec', () => {
     expect(migrated.appMode).toBe('agent')
   })
 
+  it('clears old input drafts when upgrading persisted state', () => {
+    const migrated = migratePersistedState({
+      settings: { persistInputOnRestart: true },
+      prompt: '旧提示词',
+      inputImages: [imageA],
+      galleryInputDraft: { prompt: '旧画廊草稿', inputImages: [imageA] },
+      agentInputDrafts: { 'conversation-a': { prompt: '旧 Agent 草稿', inputImages: [imageA] } },
+    }, 4) as Record<string, unknown>
+
+    expect((migrated.settings as { persistInputOnRestart?: boolean }).persistInputOnRestart).toBe(false)
+    expect(migrated).not.toHaveProperty('prompt')
+    expect(migrated).not.toHaveProperty('inputImages')
+    expect(migrated).not.toHaveProperty('galleryInputDraft')
+    expect(migrated).not.toHaveProperty('agentInputDrafts')
+  })
+
   it('migrates the old Pixel image-only defaults to a shared-key Agent configuration', () => {
     const migrated = migratePersistedState({
       settings: {
@@ -195,7 +211,7 @@ describe('persisted state codec', () => {
 
   it('normalizes legacy conversations, active ID, and top-level Agent draft fallback', () => {
     const result = normalizePersistedState({
-      settings: DEFAULT_SETTINGS,
+      settings: { ...DEFAULT_SETTINGS, persistInputOnRestart: true },
       appMode: 'agent',
       agentConversations: [{
         ...conversation(),
@@ -225,7 +241,7 @@ describe('persisted state codec', () => {
       profiles: [DEFAULT_SETTINGS.profiles[0]],
     }
     const enabled = createPersistedState({
-      ...source(),
+      ...source({ ...DEFAULT_SETTINGS, persistInputOnRestart: true }),
       previousPresetConfig,
       agentInputDrafts: {
         'conversation-a': {
@@ -391,7 +407,7 @@ describe('persisted state codec', () => {
 
   it('restores old gallery and keyed Agent drafts while normalizing favorites and default ID', () => {
     const gallery = normalizePersistedState({
-      settings: DEFAULT_SETTINGS,
+      settings: { ...DEFAULT_SETTINGS, persistInputOnRestart: true },
       prompt: '旧画廊草稿',
       inputImages: [{ id: imageA.id, dataUrl: 123 }],
       favoriteCollections: [
@@ -401,7 +417,7 @@ describe('persisted state codec', () => {
       defaultFavoriteCollectionId: 'missing',
     }, fallback(), 100)!
     const agent = normalizePersistedState({
-      settings: DEFAULT_SETTINGS,
+      settings: { ...DEFAULT_SETTINGS, persistInputOnRestart: true },
       appMode: 'agent',
       activeAgentConversationId: 'indexed-conversation',
       agentInputDrafts: {
