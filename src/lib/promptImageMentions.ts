@@ -3,7 +3,7 @@ import type { InputImage } from '../types'
 const MENTION_START = '\u2063'
 const MENTION_END = '\u2064'
 const SELECTED_IMAGE_MENTION_RE = /\u2063@图(\d+)\u2064/g
-const SELECTED_MENTION_RE = /\u2063(@图(\d+)|@(?:第)?\d+轮图\d+)\u2064/g
+const SELECTED_MENTION_RE = /\u2063(@图(\d+)|@(?:第)?\d+轮(?:参考图|图)\d+)\u2064/g
 
 export interface AtImageQuery {
   start: number

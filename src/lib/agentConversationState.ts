@@ -1,7 +1,7 @@
 import type { AgentConversation, AgentMessage, AgentRound, TaskRecord } from '../types'
 import { normalizeResponsesOutputItems } from './responsesOutputState'
 
-const AGENT_ROUND_IMAGE_MENTION_RE = /@(?:第)?(\d+)轮图(\d+)/g
+const AGENT_ROUND_IMAGE_MENTION_RE = /@(?:第)?(\d+)轮(参考图|图)(\d+)/g
 
 function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
@@ -190,12 +190,12 @@ function reindexAgentRounds(conversation: AgentConversation): AgentConversation 
 export function remapAgentRoundMentionsForPathChange(content: string, oldPath: AgentRound[], newPath: AgentRound[]) {
   if (!content || oldPath.length === 0) return content
   const newIndexByRoundId = new Map(newPath.map((round, index) => [round.id, index + 1]))
-  return content.replace(AGENT_ROUND_IMAGE_MENTION_RE, (match, roundNumber: string, imageNumber: string) => {
+  return content.replace(AGENT_ROUND_IMAGE_MENTION_RE, (match, roundNumber: string, kind: string, imageNumber: string) => {
     const oldRound = oldPath[Number(roundNumber) - 1]
     if (!oldRound) return match
     const newRoundIndex = newIndexByRoundId.get(oldRound.id)
-    if (!newRoundIndex) return `@已删除轮次图${imageNumber}`
-    return `@第${newRoundIndex}轮图${imageNumber}`
+    if (!newRoundIndex) return `@已删除轮次${kind}${imageNumber}`
+    return `@第${newRoundIndex}轮${kind}${imageNumber}`
   })
 }
 

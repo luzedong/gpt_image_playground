@@ -297,7 +297,7 @@ export default function SettingsModal() {
 
   const agentProfiles = (presetConfigOnly ? visibleProfiles : draft.profiles)
     .filter((profile) => {
-      if (!profile.apiKey.trim()) return false
+      if (!profile.apiKey.trim() && !(serverManagedConfig && profile.apiProxy)) return false
       if (profile.baseUrl.trim() || profile.provider === 'fal') return true
       return apiProxyAvailable && isProfileApiProxyEligible(draft, profile) && (apiProxyLocked || profile.apiProxy)
     })
@@ -816,7 +816,14 @@ export default function SettingsModal() {
   const switchProfile = (id: string) => {
     if (presetConfigOnly && !presetProfileIds.has(id)) return
     setReusedTaskApiProfile(null)
-    const nextDraft = normalizeSettings({ ...draft, activeProfileId: id })
+    const selectedProfile = draft.profiles.find((profile) => profile.id === id)
+    const nextDraft = normalizeSettings({
+      ...draft,
+      activeProfileId: id,
+      ...(serverManagedConfig && selectedProfile?.apiMode === 'images'
+        ? { agentImageProfileId: id }
+        : {}),
+    })
     commitSettings(nextDraft)
     setShowProfileMenu(false)
   }

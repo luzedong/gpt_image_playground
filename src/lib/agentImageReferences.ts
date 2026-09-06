@@ -2,6 +2,7 @@ import type { AgentRound, TaskRecord } from '../types'
 import { replaceImageMentionsForApi, stripImageMentionMarkers } from './promptImageMentions'
 
 const AGENT_ROUND_IMAGE_REFERENCE_RE = /@(?:第)?(\d+)轮图(\d+)/g
+const AGENT_ROUND_INPUT_REFERENCE_RE = /@(?:第)?(\d+)轮参考图(\d+)/g
 const AGENT_REF_TAG_RE = /<ref\b[^>]*\bid=(["'])(round-(\d+)-(?:image|reference)-(\d+))\1[^>]*\/?>/g
 
 export function getAgentCurrentReferenceId(round: AgentRound, index: number) {
@@ -79,5 +80,17 @@ export function replaceAgentPromptImageReferencesForApi(
     return getAgentReferenceTag(referenceId)
   }
   const withAgentReferences = withCurrentReferences.replace(AGENT_ROUND_IMAGE_REFERENCE_RE, replaceGeneratedReference)
-  return stripImageMentionMarkers(withAgentReferences)
+  const replaceInputReference = (text: string, roundNumber: string, imageNumber: string) => {
+    const round = rounds.find((item) => item.index === Number(roundNumber))
+    const imageIndex = Number(imageNumber) - 1
+    const imageId = round?.inputImageIds[imageIndex]
+    if (!round || !imageId || imageIndex < 0) return text
+
+    const currentReferenceIndex = currentRound.inputImageIds.indexOf(imageId)
+    const referenceId = currentReferenceIndex >= 0
+      ? getAgentCurrentReferenceId(currentRound, currentReferenceIndex)
+      : getAgentCurrentReferenceId(round, imageIndex)
+    return getAgentReferenceTag(referenceId)
+  }
+  return stripImageMentionMarkers(withAgentReferences.replace(AGENT_ROUND_INPUT_REFERENCE_RE, replaceInputReference))
 }

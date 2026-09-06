@@ -49,6 +49,7 @@ function useIsMobile() {
 
 type AtImageOption =
   | { type: 'input'; key: string; label: string; imageId: string; dataUrl: string; imageIndex: number }
+  | { type: 'agent-input'; key: string; label: string; imageId: string; insertText: string }
   | { type: 'agent-output'; key: string; label: string; imageId: string; insertText: string }
 
 function agentImageMentionMatches(query: string, label: string) {
@@ -557,7 +558,19 @@ export default function InputBar() {
       }),
     )
   }, [activeAgentConversation, tasks])
-  const atImageSourceCount = inputImages.length + agentOutputImageOptions.length
+  const agentInputImageOptions = useMemo<AtImageOption[]>(() => {
+    if (!activeAgentConversation) return []
+    return getActiveAgentRounds(activeAgentConversation).flatMap((round) =>
+      round.inputImageIds.map((imageId, imageIndex) => ({
+        type: 'agent-input' as const,
+        key: `agent-input:${round.id}:${imageIndex}:${imageId}`,
+        label: `@第${round.index}轮参考图${imageIndex + 1}`,
+        imageId,
+        insertText: `@第${round.index}轮参考图${imageIndex + 1}`,
+      })),
+    )
+  }, [activeAgentConversation])
+  const atImageSourceCount = inputImages.length + agentInputImageOptions.length + agentOutputImageOptions.length
   const atImageQuery = isCursorInSelectedImageMention(prompt, cursorPosition)
     ? null
     : getAtImageQuery(visiblePrompt, cursorPosition, { length: atImageSourceCount })
@@ -573,6 +586,7 @@ export default function InputBar() {
             imageIndex: index,
           } satisfies AtImageOption))
           .filter((option) => imageMentionMatches(atImageQuery.query, option.imageIndex)),
+        ...agentInputImageOptions.filter((option) => agentImageMentionMatches(atImageQuery.query, option.label)),
         ...agentOutputImageOptions.filter((option) => agentImageMentionMatches(atImageQuery.query, option.label)),
       ]
     : []

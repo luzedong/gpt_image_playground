@@ -73,6 +73,18 @@ describe('agent image references', () => {
     )).toBe('把 <ref id="round-3-reference-2" /> 变蓝')
   })
 
+  it('replaces previous round user image mentions with reference tags', () => {
+    const firstRound = round({ index: 1, inputImageIds: ['uploaded-image'] })
+    const currentRound = round({ index: 2, inputImageIds: [] })
+
+    expect(replaceAgentPromptImageReferencesForApi(
+      '参考 @第1轮参考图1 生成',
+      currentRound,
+      [firstRound, currentRound],
+      [],
+    )).toBe('参考 <ref id="round-1-reference-1" /> 生成')
+  })
+
   it('replaces copied previous round references with current round reference tags', () => {
     const firstRound = round({ index: 1, outputTaskIds: ['task-a'] })
     const currentRound = round({ index: 2, inputImageIds: ['image-a2'] })
