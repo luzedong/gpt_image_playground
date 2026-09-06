@@ -49,4 +49,23 @@ describe('server-managed API configuration', () => {
     expect(settings.profiles[1]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-5.6-luna', apiProxy: true })
     expect(validateApiProfile(settings.profiles[1])).toBeNull()
   })
+
+  it('preserves the selected server-managed Agent image profile', async () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    vi.resetModules()
+
+    const { DEFAULT_AILINK_PROFILE_ID, DEFAULT_AGENT_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, createDefaultAilinkProfile, getAgentImageApiProfile, normalizeSettings } = await import('./apiProfiles')
+    const settings = normalizeSettings({
+      profiles: [createDefaultAilinkProfile()],
+      agentImageProfileId: DEFAULT_AILINK_PROFILE_ID,
+    })
+
+    expect(settings.agentImageProfileId).toBe(DEFAULT_AILINK_PROFILE_ID)
+    expect(getAgentImageApiProfile(settings)).toMatchObject({
+      id: DEFAULT_AILINK_PROFILE_ID,
+      name: 'AILink 图像（1K–4K）',
+    })
+    expect(settings.agentTextProfileId).toBe(DEFAULT_AGENT_PROFILE_ID)
+    expect(settings.profiles.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)).toBeDefined()
+  })
 })
