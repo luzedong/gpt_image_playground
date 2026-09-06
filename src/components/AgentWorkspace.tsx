@@ -1031,8 +1031,8 @@ export default function AgentWorkspace() {
                             <span>{round.imageReady ? '图片已生成，正在整理回复' : '正在生成回复'}</span>
                             <span className="flex gap-1">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" />
-                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                             </span>
                           </span>
                         </div>
