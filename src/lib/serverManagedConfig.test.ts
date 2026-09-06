@@ -36,6 +36,7 @@ describe('server-managed API configuration', () => {
 
     expect(settings.profiles.map((profile) => profile.id)).toEqual([
       DEFAULT_OPENAI_PROFILE_ID,
+      'default-ailink-image',
       DEFAULT_AGENT_PROFILE_ID,
     ])
     expect(settings).toMatchObject({
@@ -46,8 +47,22 @@ describe('server-managed API configuration', () => {
     })
     expect(settings.profiles[0]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-image-2', apiProxy: true })
     expect(settings.profiles[0]).toMatchObject({ streamImages: true, streamPartialImages: 3 })
-    expect(settings.profiles[1]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-5.6-luna', apiProxy: true })
-    expect(validateApiProfile(settings.profiles[1])).toBeNull()
+    expect(settings.profiles[2]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-5.6-luna', apiProxy: true })
+    expect(validateApiProfile(settings.profiles[2])).toBeNull()
+  })
+
+  it('always restores the AILink image profile after a blank server-managed initialization', async () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    vi.resetModules()
+
+    const { DEFAULT_AILINK_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, getAgentImageApiProfile, normalizeSettings } = await import('./apiProfiles')
+    const settings = normalizeSettings({ activeProfileId: DEFAULT_AILINK_PROFILE_ID })
+
+    expect(settings.profiles.map((profile) => profile.id)).toContain(DEFAULT_AILINK_PROFILE_ID)
+    expect(settings.activeProfileId).toBe(DEFAULT_AILINK_PROFILE_ID)
+    expect(settings.agentImageProfileId).toBe(DEFAULT_AILINK_PROFILE_ID)
+    expect(getAgentImageApiProfile(settings)?.id).toBe(DEFAULT_AILINK_PROFILE_ID)
+    expect(settings.profiles.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)).toBeDefined()
   })
 
   it('forces network search on for legacy settings', async () => {

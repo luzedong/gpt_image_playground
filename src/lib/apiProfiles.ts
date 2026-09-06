@@ -726,9 +726,8 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     : [legacyProfile]
 
   if (isServerManagedApiConfigEnabled()) {
-    const defaultProfiles = Array.isArray(record.profiles) && record.profiles.some((profile) => isRecord(profile) && profile.id === DEFAULT_AILINK_PROFILE_ID)
-      ? createDefaultServerManagedPixelProfiles()
-      : createDefaultPixelProfiles()
+    // 服务端模式始终提供两套图像配置，不能依赖浏览器旧配置是否曾经保存过 AILink。
+    const defaultProfiles = createDefaultServerManagedPixelProfiles()
     normalizedProfiles = defaultProfiles.map((profile) => {
       const existing = normalizedProfiles.find((item) => item.id === profile.id)
       if (!existing) return profile
