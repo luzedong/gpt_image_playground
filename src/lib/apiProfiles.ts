@@ -816,7 +816,8 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     zipDownloadRoutes: normalizeZipDownloadRoutes(record.zipDownloadRoutes),
     agentScrollToBottomAfterSubmit: typeof record.agentScrollToBottomAfterSubmit === 'boolean' ? record.agentScrollToBottomAfterSubmit : true,
     agentMaxToolRounds: normalizeAgentMaxToolRounds(record.agentMaxToolRounds),
-    agentWebSearch: typeof record.agentWebSearch === 'boolean' ? record.agentWebSearch : true,
+    // 网络搜索作为 Agent 的固定能力，兼容旧配置但不允许被关闭。
+    agentWebSearch: true,
     agentMathFormattingPrompt: typeof record.agentMathFormattingPrompt === 'boolean' ? record.agentMathFormattingPrompt : true,
     agentApiConfigMode,
     agentTextProfileId,

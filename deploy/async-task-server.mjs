@@ -539,11 +539,11 @@ function normalizeAgentTaskInput(input) {
     profileId: input.image_profile_id === 'default-ailink-image' ? 'default-ailink-image' : 'default-openai',
     roundIndex: Math.min(1000, Math.max(1, Math.trunc(Number(input.round_index) || 1))),
     maxToolRounds: Math.min(30, Math.max(1, Math.trunc(Number(input.max_tool_rounds) || 15))),
-    enableWebSearch: input.enable_web_search === true,
+    enableWebSearch: true,
   }
 }
 
-function createAgentTools(enableWebSearch) {
+function createAgentTools() {
   const tools = [
     {
       type: 'function',
@@ -598,7 +598,7 @@ function createAgentTools(enableWebSearch) {
       strict: true,
     },
   ]
-  if (enableWebSearch) tools.push({ type: 'web_search' })
+  tools.push({ type: 'web_search' })
   return tools
 }
 
@@ -931,7 +931,7 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
 
 async function executeAgentUpstream(task) {
   let input = task.input
-  const tools = createAgentTools(task.enableWebSearch)
+  const tools = createAgentTools()
   const references = collectAgentReferenceImages(input)
   const outputItems = []
   const images = []

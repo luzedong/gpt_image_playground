@@ -210,25 +210,10 @@ export default function AgentSettingsTab({
       <div className="block">
         <div className="mb-1 flex items-center justify-between gap-3">
           <span className="block text-sm text-gray-600 dark:text-gray-300">网络搜索</span>
-          <button
-            type="button"
-            onClick={() => {
-              const agentMaxToolRounds = agentMaxToolRoundsInput.trim() === ''
-                ? DEFAULT_AGENT_MAX_TOOL_ROUNDS
-                : normalizeAgentMaxToolRounds(agentMaxToolRoundsInput, draft.agentMaxToolRounds)
-              setAgentMaxToolRoundsInput(String(agentMaxToolRounds))
-              commitSettings({ ...draft, agentMaxToolRounds, agentWebSearch: !draft.agentWebSearch })
-            }}
-            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${draft.agentWebSearch ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-            role="switch"
-            aria-checked={draft.agentWebSearch}
-            aria-label="网络搜索"
-          >
-            <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.agentWebSearch ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
-          </button>
+          <span className="rounded-full bg-blue-500 px-2 py-0.5 text-[11px] text-white">已开启</span>
         </div>
         <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-          启用 Responses API 的 <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:bg-white/[0.06]">web_search</code> 工具。模型每次调用此工具会产生少量固定价格的额外计费。
+          已固定启用 Responses API 的 <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:bg-white/[0.06]">web_search</code> 工具。模型每次调用此工具会产生少量固定价格的额外计费。
         </div>
       </div>
     </div>

@@ -244,9 +244,7 @@ function createAgentTools(params: TaskParams, profile: ApiProfile, settings: App
     strict: true,
   })
 
-  if (settings.agentWebSearch) {
-    tools.push({ type: 'web_search' })
-  }
+  tools.push({ type: 'web_search' })
   return tools
 }
 

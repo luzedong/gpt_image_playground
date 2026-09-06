@@ -50,6 +50,14 @@ describe('server-managed API configuration', () => {
     expect(validateApiProfile(settings.profiles[1])).toBeNull()
   })
 
+  it('forces network search on for legacy settings', async () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    vi.resetModules()
+
+    const { normalizeSettings } = await import('./apiProfiles')
+    expect(normalizeSettings({ agentWebSearch: false }).agentWebSearch).toBe(true)
+  })
+
   it('preserves the selected server-managed Agent image profile', async () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
     vi.resetModules()
