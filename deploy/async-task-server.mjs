@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 
@@ -1220,12 +1220,47 @@ async function cleanupTasks() {
   }
 }
 
+async function recoverAgentPartialResult(task) {
+  if (task.kind !== 'agent' || task.status !== 'error' || task.result) return false
+  const progress = getAgentProgress(task)
+  if (!progress.images.length) return false
+  try {
+    await Promise.all(progress.images.map((_, index) => access(agentImagePath(task.id, index))))
+  } catch {
+    return false
+  }
+
+  const error = task.error || '回复整理失败'
+  const fallbackText = `图片已生成，但回复整理失败：${error}`
+  const text = progress.text ? `${progress.text}\n\n${fallbackText}` : fallbackText
+  task.result = {
+    text,
+    images: progress.images,
+    outputItems: progress.outputItems,
+    rawResponsePayload: JSON.stringify({ output: progress.outputItems }, null, 2),
+  }
+  task.progress = {
+    ...progress,
+    revision: progress.revision + 1,
+    text,
+    pendingImages: [],
+  }
+  task.status = 'done'
+  task.error = null
+  task.updatedAt = Date.now()
+  return true
+}
+
 async function restoreTasks() {
   for (const name of await readdir(DATA_DIR)) {
     if (!name.endsWith('.json') || name.endsWith('.progress.json') || name.endsWith('.context.json')) continue
     try {
       const task = await loadTask(name.slice(0, -'.json'.length))
       if (!task) continue
+      if (await recoverAgentPartialResult(task)) {
+        await saveTask(task)
+        continue
+      }
       if (task.status === 'queued' || task.status === 'running') {
         task.status = 'queued'
         task.updatedAt = Date.now()
