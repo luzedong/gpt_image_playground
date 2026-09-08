@@ -180,4 +180,30 @@ describe('server managed Agent API', () => {
       '/api-agent-tasks/agent-task-4/result',
     ])
   })
+
+  it('returns the persisted upstream error after an event stream reports failure', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'agent-task-5', status: 'queued' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'agent-task-5', status: 'running' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('event: progress\ndata: {"id":"agent-task-5","status":"error","error":"Concurrency limit exceeded"}\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-5',
+        status: 'error',
+        error: 'Concurrency limit exceeded',
+      }), { status: 200 }))
+
+    await expect(callServerManagedAgentApi({
+      taskId: 'agent-task-5',
+      input: [],
+      instructions: 'show upstream error',
+      params: DEFAULT_PARAMS,
+      roundIndex: 1,
+      maxToolRounds: 15,
+      enableWebSearch: true,
+      pollIntervalMs: 0,
+    })).rejects.toThrow('Concurrency limit exceeded')
+  })
 })

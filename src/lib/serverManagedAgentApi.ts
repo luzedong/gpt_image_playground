@@ -264,7 +264,10 @@ export async function callServerManagedAgentApi(opts: {
   if (shouldUseEvents) {
     try {
       const status = await listenAgentEvents(created.task_id, opts.signal, publishProgress)
-      if (status === 'error') throw new Error('服务端 Agent 异步任务失败')
+      if (status === 'error') {
+        const payload = await fetchTask(created.task_id, opts.signal, '?meta=1')
+        throw new Error(getErrorMessage(payload, '服务端 Agent 异步任务失败'))
+      }
       let resultRetryAttempt = 0
       while (true) {
         try {

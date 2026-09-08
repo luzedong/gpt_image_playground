@@ -10,10 +10,12 @@ const MAX_AUDIO_BASE64_BYTES = 10 * 1024 * 1024
 const MAX_1K_PIXELS = 1_572_864
 const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
+const UPSTREAM_RETRY_ATTEMPTS = 3
 const activeTasks = new Set()
 const pendingTasks = []
 const agentTaskCreationLocks = new Map()
 const agentEventClients = new Map()
+const upstreamLocks = new Map()
 const AGENT_IMAGE_DIR = join(DATA_DIR, 'agent-images')
 
 function json(res, status, payload) {
@@ -132,6 +134,7 @@ function broadcastAgentEvent(task) {
   const payload = JSON.stringify({
     id: task.id,
     status: task.status,
+    error: task.error ?? null,
     progress: publicAgentProgress(task, true),
   })
   for (const res of clients) {
@@ -150,6 +153,7 @@ function addAgentEventClient(task, req, res) {
   res.write(`event: progress\ndata: ${JSON.stringify({
     id: task.id,
     status: task.status,
+    error: task.error ?? null,
     progress: publicAgentProgress(task, true),
   })}\n\n`)
   const heartbeat = setInterval(() => {
@@ -397,6 +401,54 @@ async function readApiPayload(response) {
   }
 }
 
+function isRetryableUpstreamFailure(status, message = '', imageRequest = false) {
+  if (status === 408 || status === 425 || status === 429) return true
+  if (imageRequest) return /concurrency limit|rate limit|too many requests|gateway routing budget expired/i.test(message)
+  return status >= 500 || /temporarily unavailable|try again|concurrency limit|rate limit|too many requests|gateway routing budget expired/i.test(message)
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function fetchUpstreamWithRetry(url, options = {}, timeoutMs = 600_000, imageRequest = false) {
+  let lastError
+  for (let attempt = 0; attempt < UPSTREAM_RETRY_ATTEMPTS; attempt += 1) {
+    let response
+    try {
+      response = await fetchWithTimeout(url, options, timeoutMs)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (imageRequest || (message && !/aborted|abort|fetch failed|network|socket|timeout|temporarily unavailable|try again|concurrency limit|rate limit|too many requests|gateway routing budget expired/i.test(message))) throw error
+      lastError = error instanceof Error ? error : new Error(message)
+      if (attempt === UPSTREAM_RETRY_ATTEMPTS - 1) throw lastError
+      await waitMs(1500 * (attempt + 1))
+      continue
+    }
+    if (response.ok) return response
+    const payload = await readApiPayload(response)
+    const message = payload?.error?.message || `上游 API 返回 HTTP ${response.status}`
+    if (!isRetryableUpstreamFailure(response.status, message, imageRequest) || attempt === UPSTREAM_RETRY_ATTEMPTS - 1) throw new Error(message)
+    lastError = new Error(message)
+    await waitMs(1500 * (attempt + 1))
+  }
+  throw lastError || new Error('上游 API 请求失败')
+}
+
+async function withUpstreamLock(key, operation) {
+  const previous = upstreamLocks.get(key) || Promise.resolve()
+  let release
+  const current = new Promise((resolve) => { release = resolve })
+  upstreamLocks.set(key, current)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (upstreamLocks.get(key) === current) upstreamLocks.delete(key)
+  }
+}
+
 function extractSpeechText(payload) {
   const content = payload?.choices?.[0]?.message?.content
   if (typeof content === 'string') return content.trim()
@@ -468,6 +520,10 @@ async function normalizeImageResult(payload, outputFormat) {
 async function executeUpstream(task) {
   const config = getUpstreamConfig(task.params.size, task.profileId)
   if (!config.baseUrl || !config.apiKey) throw new Error('服务端图像 API 配置不完整')
+  return withUpstreamLock(config.baseUrl, () => executeUpstreamRequest(task, config))
+}
+
+async function executeUpstreamRequest(task, config) {
   const headers = { Authorization: `Bearer ${config.apiKey}` }
   const isPixel = config.isPixel
   const inputImages = isPixel ? task.inputImages.slice(0, 1) : task.inputImages
@@ -494,7 +550,7 @@ async function executeUpstream(task) {
       form.append(isPixel ? 'image' : 'image[]', blob, `input-${index + 1}.${extension}`)
     }
     if (task.maskDataUrl) form.append('mask', dataUrlToBlob(task.maskDataUrl), 'mask.png')
-    response = await fetchWithTimeout(`${config.baseUrl}/images/edits`, { method: 'POST', headers, body: form })
+    response = await fetchUpstreamWithRetry(`${config.baseUrl}/images/edits`, { method: 'POST', headers, body: form }, 600_000, true)
   } else {
     const body = {
       model: config.model,
@@ -511,14 +567,13 @@ async function executeUpstream(task) {
       } : {}),
       ...(task.params.n > 1 ? { n: task.params.n } : {}),
     }
-    response = await fetchWithTimeout(`${config.baseUrl}/images/generations`, {
+    response = await fetchUpstreamWithRetry(`${config.baseUrl}/images/generations`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    })
+    }, 600_000, true)
   }
   const payload = await readApiPayload(response)
-  if (!response.ok) throw new Error(payload?.error?.message || `上游 API 返回 HTTP ${response.status}`)
   return normalizeImageResult(payload, task.params.output_format)
 }
 
@@ -728,26 +783,47 @@ async function readAgentStreamPayload(response, onTextDelta) {
   return payload
 }
 
-async function callAgentUpstream(input, instructions, tools, onTextDelta) {
+async function callAgentUpstream(input, instructions, tools, onTextDelta, onRetry) {
   const baseUrl = (process.env.CHAT_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
   const apiKey = process.env.CHAT_API_KEY || process.env.API_KEY || ''
   const model = process.env.CHAT_MODEL || 'gpt-5.6-luna'
   if (!baseUrl || !apiKey) throw new Error('服务端聊天 API 配置不完整')
-  const response = await fetchWithTimeout(`${baseUrl}/responses`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model, instructions, input, tools, stream: true }),
-  })
-  if (response.ok && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
-    return readAgentStreamPayload(response, onTextDelta)
+  const body = JSON.stringify({ model, instructions, input, tools, stream: true })
+  let lastError
+  for (let attempt = 0; attempt < UPSTREAM_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(`${baseUrl}/responses`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+      })
+      if (!response.ok) {
+        const payload = await readApiPayload(response)
+        const message = payload?.error?.message || `聊天 API 返回 HTTP ${response.status}`
+        if (isRetryableUpstreamFailure(response.status, message)) throw new Error(`可重试：${message}`)
+        throw new Error(message)
+      }
+      if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+        return await readAgentStreamPayload(response, onTextDelta)
+      }
+      const payload = await readApiPayload(response)
+      if (!Array.isArray(payload?.output)) throw new Error('聊天 API 未返回有效响应')
+      return payload
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!isRetryableUpstreamFailure(0, message) && !message.startsWith('可重试：')) throw error
+      if (attempt === UPSTREAM_RETRY_ATTEMPTS - 1) {
+        throw new Error(message.replace(/^可重试：/, ''))
+      }
+      lastError = error instanceof Error ? error : new Error(message)
+      await onRetry?.()
+      await waitMs(1500 * (attempt + 1))
+    }
   }
-  const payload = await readApiPayload(response)
-  if (!response.ok) throw new Error(payload?.error?.message || `聊天 API 返回 HTTP ${response.status}`)
-  if (!Array.isArray(payload?.output)) throw new Error('聊天 API 未返回有效响应')
-  return payload
+  throw lastError || new Error('聊天 API 请求失败')
 }
 
 function getAgentReferenceIds(text) {
@@ -912,6 +988,7 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
     params: { ...task.params, n: 1 },
     prompt: cleanPrompt,
     inputImages: references,
+    profileId: task.profileId,
     nativeTransparentBackground: false,
   })
   const finishedAt = Date.now()
@@ -941,15 +1018,37 @@ async function executeAgentUpstream(task) {
 
   for (let responseRound = 0; responseRound < task.maxToolRounds; responseRound++) {
     let streamedText = ''
-    const payload = await callAgentUpstream(input, task.instructions, tools, async (delta) => {
-      streamedText += delta
+    let payload
+    try {
+      payload = await callAgentUpstream(input, task.instructions, tools, async (delta) => {
+        streamedText += delta
+        await progress.report({
+          text: [...textSegments, streamedText].filter(Boolean).join('\n\n'),
+          outputItems,
+          images,
+          pendingImages: [],
+        })
+      }, async () => {
+        streamedText = ''
+        await progress.report({
+          text: textSegments.join('\n\n').trim(),
+          outputItems,
+          images,
+          pendingImages: [],
+        }, true)
+      })
+    } catch (error) {
+      if (images.length === 0) throw error
+      const message = error instanceof Error ? error.message : String(error)
+      textSegments.push(`图片已生成，但回复整理失败：${message}`)
       await progress.report({
-        text: [...textSegments, streamedText].filter(Boolean).join('\n\n'),
+        text: textSegments.join('\n\n').trim(),
         outputItems,
         images,
         pendingImages: [],
-      })
-    })
+      }, true)
+      break
+    }
     responseId = typeof payload.id === 'string' ? payload.id : responseId
     const currentOutput = getAgentResponseOutput(payload)
     outputItems.push(...currentOutput)
