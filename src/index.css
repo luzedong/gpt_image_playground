@@ -1,6 +1,3 @@
-@import url('https://fontsapi.zeoseven.com/442/main/result.css');
-@import url('https://cdn.jsdelivr.net/npm/@lobehub/webfont-harmony-sans-sc@1.0.0/css/index.css');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -16,8 +13,8 @@
   --primary-foreground: 0 0% 100%;
   --sidebar: 240 5% 96%;
   --sidebar-foreground: 240 10% 10%;
-  --font-ui-sans: 'HarmonyOS Sans SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'Maple Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --font-ui-sans: 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
