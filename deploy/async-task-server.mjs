@@ -318,6 +318,14 @@ function normalizeTaskParams(params) {
   }
 }
 
+function normalizeImageModel(value) {
+  if (value == null || value === '') return ''
+  if (typeof value !== 'string') throw new Error('图像模型 ID 无效')
+  const model = value.trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(model)) throw new Error('图像模型 ID 无效')
+  return model
+}
+
 function normalizeTaskInput(input) {
   if (!input || typeof input !== 'object') throw new Error('任务格式无效')
   const body = input
@@ -335,6 +343,7 @@ function normalizeTaskInput(input) {
     prompt,
     params,
     profileId: body.profileId === 'default-ailink-image' ? 'default-ailink-image' : 'default-openai',
+    model: normalizeImageModel(body.model),
     inputImages,
     maskDataUrl,
     nativeTransparentBackground: body.nativeTransparentBackground === true,
@@ -355,7 +364,7 @@ function isPixelApiUrl(baseUrl) {
   }
 }
 
-function getUpstreamConfig(size, profileId = '') {
+function getUpstreamConfig(size, profileId = '', requestedModel = '') {
   const isHighResolution = is4K(size)
   const isAilink = profileId === 'default-ailink-image'
   const upstreamBaseUrl = isAilink
@@ -372,9 +381,9 @@ function getUpstreamConfig(size, profileId = '') {
       : (isHighResolution ? process.env.IMAGE_PIXEL_4K_API_KEY : process.env.IMAGE_PIXEL_1K_API_KEY)
         || (isHighResolution ? process.env.IMAGE_4K_API_KEY : process.env.IMAGE_1K_API_KEY)
         || process.env.API_KEY || '',
-    model: isAilink
+    model: requestedModel || (isAilink
       ? (isHighResolution ? process.env.IMAGE_AILINK_4K_MODEL : process.env.IMAGE_AILINK_1K_MODEL) || 'gpt-image-2'
-      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2',
+      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2'),
   }
 }
 
@@ -518,7 +527,7 @@ async function normalizeImageResult(payload, outputFormat) {
 }
 
 async function executeUpstream(task) {
-  const config = getUpstreamConfig(task.params.size, task.profileId)
+  const config = getUpstreamConfig(task.params.size, task.profileId, task.model)
   if (!config.baseUrl || !config.apiKey) throw new Error('服务端图像 API 配置不完整')
   return withUpstreamLock(config.baseUrl, () => executeUpstreamRequest(task, config))
 }
@@ -592,6 +601,7 @@ function normalizeAgentTaskInput(input) {
     instructions,
     params: normalizeTaskParams(input.params),
     profileId: input.image_profile_id === 'default-ailink-image' ? 'default-ailink-image' : 'default-openai',
+    model: normalizeImageModel(input.image_model),
     roundIndex: Math.min(1000, Math.max(1, Math.trunc(Number(input.round_index) || 1))),
     maxToolRounds: Math.min(30, Math.max(1, Math.trunc(Number(input.max_tool_rounds) || 15))),
     enableWebSearch: true,
@@ -989,6 +999,7 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
     prompt: cleanPrompt,
     inputImages: references,
     profileId: task.profileId,
+    model: task.model,
     nativeTransparentBackground: false,
   })
   const finishedAt = Date.now()
@@ -1284,6 +1295,7 @@ async function handleCreate(req, res) {
       prompt: body.prompt,
       params: body.params,
       profileId: body.profileId,
+      model: body.model,
       inputImages: body.inputImages,
       maskDataUrl: body.maskDataUrl,
       nativeTransparentBackground: body.nativeTransparentBackground,
@@ -1319,6 +1331,7 @@ async function handleCreateAgent(req, res) {
           instructions: body.instructions,
           params: body.params,
           profileId: body.profileId,
+          model: body.model,
           roundIndex: body.roundIndex,
           maxToolRounds: body.maxToolRounds,
           enableWebSearch: body.enableWebSearch,

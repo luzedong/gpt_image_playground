@@ -5,6 +5,7 @@ const RAW_SHOW_PRESET_CONFIG_ONLY = readRuntimeEnv(import.meta.env.VITE_SHOW_PRE
 const SHOW_PRESET_CONFIG_ONLY = (RAW_SHOW_PRESET_CONFIG_ONLY || readRuntimeEnv(import.meta.env.VITE_SHOW_DEFAULT_CONFIG_ONLY)) === 'true'
 const LOCK_PRESET_CONFIG_PARAMS = readRuntimeEnv(import.meta.env.VITE_LOCK_PRESET_CONFIG_PARAMS) === 'true'
 const PREVENT_PRESET_CONFIG_DELETION = readRuntimeEnv(import.meta.env.VITE_PREVENT_PRESET_CONFIG_DELETION) === 'true'
+const SERVER_MANAGED_API_CONFIG = readRuntimeEnv(import.meta.env.VITE_SERVER_MANAGED_API_CONFIG) === 'true'
 
 let presetProfiles: ApiProfile[] = []
 let presetProviders: CustomProviderDefinition[] = []
@@ -105,7 +106,8 @@ export function enforcePresetConfigPolicy(
     return {
       ...(paramsLocked ? preset : profile),
       apiKey: profile.apiKey,
-      // 流式选项属于用户体验偏好，服务端锁定凭据时仍允许本地调整。
+      // 图像模型和流式选项不包含凭据，服务端锁定连接时仍允许本地调整。
+      model: SERVER_MANAGED_API_CONFIG && preset.apiMode === 'images' && profile.model.trim() ? profile.model : preset.model,
       streamImages: preset.provider === 'openai' ? profile.streamImages ?? preset.streamImages : preset.streamImages,
       streamPartialImages: preset.provider === 'openai' ? profile.streamPartialImages ?? preset.streamPartialImages : preset.streamPartialImages,
       provider: paramsLocked || presetConfigOnly ? preset.provider : profile.provider,

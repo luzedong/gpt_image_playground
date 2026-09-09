@@ -25,6 +25,8 @@ describe('server managed Agent API', () => {
       input: [{ role: 'user', content: '生成一张图' }],
       instructions: 'use the image tool',
       params: DEFAULT_PARAMS,
+      imageProfileId: 'default-ailink-image',
+      imageModel: 'test-image-model',
       roundIndex: 1,
       maxToolRounds: 15,
       enableWebSearch: false,
@@ -38,6 +40,8 @@ describe('server managed Agent API', () => {
       round_index: 1,
       max_tool_rounds: 15,
       enable_web_search: false,
+      image_profile_id: 'default-ailink-image',
+      image_model: 'test-image-model',
     })
   })
 

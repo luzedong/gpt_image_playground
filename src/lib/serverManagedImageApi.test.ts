@@ -51,6 +51,8 @@ describe('server managed image API', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       prompt: '一只猫',
       inputImages: [],
+      profileId: 'default-openai',
+      model: 'gpt-image-2',
     })
   })
 

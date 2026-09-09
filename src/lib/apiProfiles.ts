@@ -733,7 +733,8 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
       if (!existing) return profile
       return {
         ...profile,
-        // 服务端固定连接参数，保留用户在浏览器中选择的流式体验偏好。
+        // 服务端固定连接参数；模型 ID 和流式体验偏好可由浏览器单独调整。
+        model: profile.apiMode === 'images' && existing.model.trim() ? existing.model : profile.model,
         streamImages: existing.streamImages,
         streamPartialImages: existing.streamPartialImages,
       }

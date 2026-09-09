@@ -537,7 +537,11 @@ export default function SettingsModal() {
     if (!activeProfileLocked) return true
     if (activeProfile.provider !== 'openai') return false
     const keys = Object.keys(patch)
-    return keys.length > 0 && keys.every((key) => key === 'streamImages' || key === 'streamPartialImages')
+    return keys.length > 0 && keys.every((key) =>
+      key === 'streamImages' ||
+      key === 'streamPartialImages' ||
+      (key === 'model' && serverManagedConfig && activeProfile.apiMode === 'images'),
+    )
   }
 
   const updateActiveProfile = (patch: Partial<ApiProfile>, commit = false) => {
@@ -1667,7 +1671,7 @@ export default function SettingsModal() {
                   onChange={(e) => updateActiveProfile({ model: e.target.value })}
                   onBlur={(e) => commitActiveProfilePatch({ model: e.target.value })}
                   type="text"
-                  disabled={serverManagedConfig || activeProfileLocked}
+                  disabled={activeProfileLocked && !(serverManagedConfig && activeProfile.apiMode === 'images')}
                   placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(activeProfile.apiMode ?? DEFAULT_SETTINGS.apiMode)}
                   className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
                 />
