@@ -837,13 +837,13 @@ export default function MaskEditorModal() {
     <>
       <div data-no-drag-select className="fixed inset-0 z-[80] flex flex-col bg-gray-50 dark:bg-gray-900 animate-modal-in">
       {/* Header */}
-      <div className="flex-none flex items-center justify-between px-4 py-3 sm:px-6 sm:py-3.5 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 z-20">
-        <div className="flex items-center gap-3">
-          <button onClick={close} disabled={isSaving} className="p-2 sm:p-2.5 -ml-2 text-gray-500 hover:bg-gray-100 rounded-lg sm:rounded-xl dark:text-gray-400 dark:hover:bg-gray-800 transition" title="取消">
+      <div className="safe-area-top flex-none flex items-center justify-between gap-2 px-3 py-2.5 sm:px-6 sm:py-3.5 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 z-20">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+          <button type="button" onClick={close} disabled={isSaving} className="flex h-8 w-8 flex-none items-center justify-center text-gray-500 hover:bg-gray-100 rounded-lg sm:h-10 sm:w-10 sm:rounded-xl dark:text-gray-400 dark:hover:bg-gray-800 transition" title="取消" aria-label="取消">
             <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
-          <div className="relative flex items-center gap-1.5 sm:gap-2">
-            <h2 className="text-sm sm:text-base font-semibold text-gray-800 dark:text-gray-200" id="mask-editor-title">编辑遮罩</h2>
+          <div className="relative flex min-w-0 items-center gap-1 sm:gap-2">
+            <h2 className="truncate text-sm sm:text-base font-semibold text-gray-800 dark:text-gray-200" id="mask-editor-title">编辑遮罩</h2>
             <button
               type="button"
               onClick={showMaskInfoPopover}
@@ -852,7 +852,7 @@ export default function MaskEditorModal() {
               onTouchStart={startMaskInfoTouch}
               onTouchEnd={clearMaskInfoTimer}
               onTouchCancel={hideMaskInfoPopover}
-              className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+              className="hidden h-6 w-6 flex-none items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300 min-[360px]:flex sm:h-7 sm:w-7"
               aria-label="遮罩编辑说明"
             >
               <svg className="h-4 w-4 sm:h-[18px] sm:w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -868,13 +868,16 @@ export default function MaskEditorModal() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex flex-none items-center gap-1.5 sm:gap-3">
           {maskDraft?.targetImageId === imageId && (
-            <button onClick={handleRemoveMask} className="flex h-8 sm:h-[38px] items-center gap-1.5 px-3.5 sm:px-4 text-xs sm:text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/[0.08] text-gray-700 dark:text-gray-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/20 dark:hover:text-red-400 transition">
-              移除遮罩
+            <button type="button" onClick={handleRemoveMask} className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-gray-100 text-gray-700 transition hover:bg-red-50 hover:text-red-600 dark:bg-white/[0.08] dark:text-gray-300 dark:hover:bg-red-500/20 dark:hover:text-red-400 sm:h-[38px] sm:w-auto sm:gap-1.5 sm:rounded-xl sm:px-4 sm:text-sm sm:font-medium" title="移除遮罩" aria-label="移除遮罩">
+              <svg className="h-4 w-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12m-10 0 1 13h6l1-13m-6 0V4h4v3" />
+              </svg>
+              <span className="hidden sm:inline">移除遮罩</span>
             </button>
           )}
-          <button onClick={handleSave} disabled={!isReady || isSaving} className="flex h-8 sm:h-[38px] items-center gap-1.5 px-4 sm:px-5 text-xs sm:text-sm font-medium rounded-xl text-white bg-blue-500 hover:bg-blue-600 active:bg-blue-700 shadow-sm transition disabled:opacity-50">
+          <button type="button" onClick={handleSave} disabled={!isReady || isSaving} className="flex h-8 flex-none items-center justify-center px-3.5 text-xs font-medium rounded-lg text-white bg-blue-500 hover:bg-blue-600 active:bg-blue-700 shadow-sm transition disabled:opacity-50 sm:h-[38px] sm:px-5 sm:text-sm sm:rounded-xl">
             {isSaving ? '保存中...' : '保存'}
           </button>
         </div>
