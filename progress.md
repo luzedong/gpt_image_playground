@@ -131,3 +131,5 @@
 - 已把 Agent SSE 的纯文本追加改为 `progress_delta` 增量；首次连接、图片、工具、状态或错误变化仍发送完整快照，保证重连和状态恢复。
 - 新增回归测试覆盖资产缺失上传、已知资产复用、任务创建不含 Base64、旧服务端 404 回退，以及 SSE 增量重组；新增标题延后测试覆盖成功轮次和失败轮次。
 - 本地验证通过：`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`node --check deploy/async-task-server.mjs`、`git diff --check`。
+- 提交 `dd96335` 已推送；服务器拉取后使用 `deploy/Dockerfile` 构建镜像 `gpt-image-playground:dd96335`，依赖层命中缓存。
+- 已按原挂载和启动参数重建线上容器；首页返回 200 且标题为“绘语”，`/api-agent-assets/check` 空列表返回 `{"missing":[]}`，异步任务服务正常监听。
