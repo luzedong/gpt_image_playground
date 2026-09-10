@@ -143,3 +143,7 @@
 - 已修改 `deploy/async-task-server.mjs`：生成请求固定返回 Base64，AILink 编辑请求返回 Base64，AIPixel 编辑保持兼容；增加安全耗时日志，区分响应头、响应体和图片 URL 下载。
 - 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`git diff --check`。
 - 修改尚未提交、推送或部署，等待用户确认。
+- 修复提交 `66dbef7` 已推送到 `main`。
+- 服务器已拉取代码并使用 `deploy/Dockerfile` 构建镜像 `gpt-image-playground:66dbef7`；依赖层命中缓存，仅重建源码和产物层。
+- 已按原端口、启动命令、API 配置只读挂载和任务数据挂载重建线上容器。
+- 部署后容器运行正常；公网首页返回 200 且标题为“绘语”，`/api-agent-assets/check` 空列表返回 `{"missing":[]}`，容器内服务端文件确认包含 `response_format: b64_json` 逻辑。
