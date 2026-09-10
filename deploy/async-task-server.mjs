@@ -572,6 +572,7 @@ async function normalizeImageResult(payload, outputFormat) {
   const data = Array.isArray(payload?.data) ? payload.data : []
   const rawImageUrls = []
   const images = []
+  const startedAt = Date.now()
   for (const item of data) {
     if (typeof item?.b64_json === 'string' && item.b64_json.trim()) {
       images.push(item.b64_json.startsWith('data:') ? item.b64_json : `data:${getOutputMime(outputFormat)};base64,${item.b64_json}`)
@@ -583,7 +584,12 @@ async function normalizeImageResult(payload, outputFormat) {
     }
   }
   if (!images.length) throw new Error(payload?.error?.message || '接口未返回图片数据')
-  return { images, rawImageUrls: rawImageUrls.length ? rawImageUrls : undefined }
+  return {
+    images,
+    rawImageUrls: rawImageUrls.length ? rawImageUrls : undefined,
+    imageSource: rawImageUrls.length ? 'url' : 'b64_json',
+    imageDownloadDurationMs: rawImageUrls.length ? Date.now() - startedAt : 0,
+  }
 }
 
 async function executeUpstream(task) {
@@ -597,6 +603,7 @@ async function executeUpstreamRequest(task, config) {
   const isPixel = config.isPixel
   const inputImages = isPixel ? task.inputImages.slice(0, 1) : task.inputImages
   const isEdit = inputImages.length > 0
+  const requestStartedAt = Date.now()
   let response
   if (isEdit) {
     const form = new FormData()
@@ -619,11 +626,13 @@ async function executeUpstreamRequest(task, config) {
       form.append(isPixel ? 'image' : 'image[]', blob, `input-${index + 1}.${extension}`)
     }
     if (task.maskDataUrl) form.append('mask', dataUrlToBlob(task.maskDataUrl), 'mask.png')
+    if (!isPixel) form.append('response_format', 'b64_json')
     response = await fetchUpstreamWithRetry(`${config.baseUrl}/images/edits`, { method: 'POST', headers, body: form }, 600_000, true)
   } else {
     const body = {
       model: config.model,
       prompt: task.prompt,
+      response_format: 'b64_json',
       ...(task.params.size !== 'auto' ? { size: task.params.size } : {}),
       ...(!isPixel ? {
         output_format: task.params.output_format,
@@ -642,8 +651,24 @@ async function executeUpstreamRequest(task, config) {
       body: JSON.stringify(body),
     }, 600_000, true)
   }
+  const responseReceivedAt = Date.now()
   const payload = await readApiPayload(response)
-  return normalizeImageResult(payload, task.params.output_format)
+  const payloadReadAt = Date.now()
+  const result = await normalizeImageResult(payload, task.params.output_format)
+  console.log(JSON.stringify({
+    type: 'image_upstream_timing',
+    taskId: task.id,
+    kind: task.kind,
+    profileId: task.profileId || null,
+    model: config.model,
+    action: isEdit ? 'edit' : 'generate',
+    requestMs: responseReceivedAt - requestStartedAt,
+    responseBodyMs: payloadReadAt - responseReceivedAt,
+    imageDownloadMs: result.imageDownloadDurationMs,
+    imageSource: result.imageSource,
+    totalMs: Date.now() - requestStartedAt,
+  }))
+  return result
 }
 
 function normalizeAgentTaskInput(input) {

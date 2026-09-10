@@ -133,3 +133,13 @@
 - 本地验证通过：`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`node --check deploy/async-task-server.mjs`、`git diff --check`。
 - 提交 `dd96335` 已推送；服务器拉取后使用 `deploy/Dockerfile` 构建镜像 `gpt-image-playground:dd96335`，依赖层命中缓存。
 - 已按原挂载和启动参数重建线上容器；首页返回 200 且标题为“绘语”，`/api-agent-assets/check` 空列表返回 `{"missing":[]}`，异步任务服务正常监听。
+
+## 2026-09-10 Agent 图片延迟复查
+
+- 新样本 `mtvhkmj385iiv` 显示上游计费耗时 35.58 秒，但前端任务从 20:11:05 计到 05:19。
+- 访问日志显示浏览器 20:15:50 才首次请求图片资源，服务端图片文件 20:15:43 才生成；主要延迟发生在服务端暴露图片之前。
+- 图片资源约 2.9 MB，公网下载约 34 秒，与已测约 0.36 MB/s 带宽一致，不是主要未知延迟。
+- 已确认 252.4 秒全部在服务端图片工具内部，且同时间无其他图像任务占用供应商锁；服务端请求缺少 `response_format: 'b64_json'`，会走 URL 结果并二次下载。
+- 已修改 `deploy/async-task-server.mjs`：生成请求固定返回 Base64，AILink 编辑请求返回 Base64，AIPixel 编辑保持兼容；增加安全耗时日志，区分响应头、响应体和图片 URL 下载。
+- 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`git diff --check`。
+- 修改尚未提交、推送或部署，等待用户确认。
