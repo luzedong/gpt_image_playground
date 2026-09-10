@@ -6,6 +6,11 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+async function sha256Id(dataUrl: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dataUrl))
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 describe('server managed Agent API', () => {
   it('creates a durable Agent task and reads its completed result', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
@@ -209,5 +214,131 @@ describe('server managed Agent API', () => {
       enableWebSearch: true,
       pollIntervalMs: 0,
     })).rejects.toThrow('Concurrency limit exceeded')
+  })
+
+  it('uploads missing reference assets once and sends only asset IDs', async () => {
+    const dataUrl = `data:image/png;base64,${btoa('reference-image')}`
+    const assetId = await sha256Id(dataUrl)
+    const input = [{ type: 'input_image', image_url: dataUrl }]
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ missing: [assetId] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: assetId }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'asset-task-1', status: 'done' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'asset-task-1', status: 'done' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'asset-task-1',
+        status: 'done',
+        result: { text: '完成', images: [], outputItems: [] },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'asset-task-2', status: 'done' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'asset-task-2', status: 'done' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'asset-task-2',
+        status: 'done',
+        result: { text: '复用完成', images: [], outputItems: [] },
+      }), { status: 200 }))
+
+    const call = (taskId: string, text: string) => callServerManagedAgentApi({
+      taskId,
+      input,
+      instructions: 'reuse asset',
+      params: DEFAULT_PARAMS,
+      roundIndex: 1,
+      maxToolRounds: 15,
+      enableWebSearch: false,
+      pollIntervalMs: 0,
+    }).then((result) => expect(result.text).toBe(text))
+
+    await call('asset-task-1', '完成')
+    await call('asset-task-2', '复用完成')
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api-agent-assets/check')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ ids: [assetId] })
+    expect(fetchMock.mock.calls[1][0]).toBe(`/api-agent-assets/${assetId}`)
+    const firstTaskBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body))
+    expect(firstTaskBody.input).toEqual([{ type: 'input_image', image_asset_id: assetId, image_mime: 'image/png' }])
+    expect(JSON.stringify(firstTaskBody)).not.toContain(dataUrl)
+    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(fetchMock.mock.calls.slice(5).map(([url]) => url)).not.toContain(`/api-agent-assets/${assetId}`)
+  })
+
+  it('keeps original reference input when the asset endpoint is unavailable', async () => {
+    const dataUrl = `data:image/jpeg;base64,${btoa('legacy-reference')}`
+    const input = [{ type: 'input_image', image_url: dataUrl }]
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('not found', { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'asset-task-3', status: 'done' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'asset-task-3', status: 'done' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'asset-task-3',
+        status: 'done',
+        result: { text: '兼容完成', images: [], outputItems: [] },
+      }), { status: 200 }))
+
+    const result = await callServerManagedAgentApi({
+      taskId: 'asset-task-3',
+      input,
+      instructions: 'legacy compatibility',
+      params: DEFAULT_PARAMS,
+      roundIndex: 1,
+      maxToolRounds: 15,
+      enableWebSearch: false,
+      pollIntervalMs: 0,
+    })
+
+    expect(result.text).toBe('兼容完成')
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).input).toEqual(input)
+  })
+
+  it('reconstructs appended SSE text deltas before completion', async () => {
+    const progress = vi.fn()
+    const eventStream = [
+      'event: progress',
+      `data: ${JSON.stringify({ id: 'delta-task', status: 'running', progress_delta: { revision: 2, text_delta: 'B' } })}`,
+      '',
+      'event: progress',
+      `data: ${JSON.stringify({
+        id: 'delta-task',
+        status: 'done',
+        progress: { revision: 3, imageRevision: 0, text: 'ABC', outputItems: [], pendingImages: [] },
+      })}`,
+      '',
+    ].join('\n')
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: 'delta-task', status: 'running' }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'delta-task',
+        status: 'running',
+        progress: { revision: 1, imageRevision: 0, text: 'A', outputItems: [], pendingImages: [] },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(eventStream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'delta-task',
+        status: 'done',
+        result: { text: 'ABC', images: [], outputItems: [] },
+      }), { status: 200 }))
+      .mockResolvedValue(new Response(JSON.stringify({
+        id: 'delta-task',
+        status: 'done',
+        result: { text: 'ABC', images: [], outputItems: [] },
+      }), { status: 200 }))
+
+    const result = await callServerManagedAgentApi({
+      taskId: 'delta-task',
+      input: [],
+      instructions: 'delta',
+      params: DEFAULT_PARAMS,
+      roundIndex: 1,
+      maxToolRounds: 15,
+      enableWebSearch: false,
+      pollIntervalMs: 0,
+      onProgress: progress,
+    })
+
+    expect(result.text).toBe('ABC')
+    expect(progress.mock.calls.map(([item]) => item.text)).toEqual(['A', 'AB'])
   })
 })

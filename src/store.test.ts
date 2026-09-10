@@ -1,4 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.hoisted(() => {
+  const nodeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+  if (nodeEnv) nodeEnv.VITE_DEFAULT_API_KEY = 'test-server-key'
+})
+
 import { strToU8, zipSync } from 'fflate'
 import { DEFAULT_PARAMS } from './types'
 import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, normalizeSettings } from './lib/apiProfiles'
@@ -131,9 +137,13 @@ vi.mock('./lib/agentApi', async (importOriginal) => {
     })),
   }
 })
+vi.mock('./lib/serverManagedAgentApi', () => ({
+  callServerManagedAgentApi: vi.fn(),
+}))
 import { clearAgentConversations, clearImages, clearTasks, commitTaskDeletion, deleteImage as deleteDbImage, deleteTask as deleteDbTask, getAllAgentConversations, getAllImageIds, getAllTasks, getImage, getStoredFreshImageThumbnail, putAgentConversation, putImage, putImageThumbnail, putTask as putDbTask } from './lib/db'
 import { callImageApi } from './lib/api'
-import { callAgentResponsesApi, callBatchImageSingle } from './lib/agentApi'
+import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle } from './lib/agentApi'
+import { callServerManagedAgentApi } from './lib/serverManagedAgentApi'
 import { getFalQueuedImageResult } from './lib/falAiImageApi'
 import { removeKeyedBackgroundFromDataUrl } from './lib/transparentImage'
 import { clearData, clearFailedTasks, deleteFavoriteCollection, editOutputs, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, regenerateAgentAssistantMessage, removeMultipleTasks, removeTask, restoreExplicitPresetConfig, reuseConfig, setPageLifecycleEnding, stopAgentResponse, submitAgentMessage, submitTask, taskMatchesFilterStatus, taskMatchesSearchQuery, useStore } from './store'
@@ -5658,5 +5668,88 @@ describe('reused task API profile', () => {
       cancelText: '放弃提交',
     }))
     expect(state.showSettings).toBe(false)
+  })
+})
+
+describe('server managed Agent title timing', () => {
+  const showToast = vi.fn()
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    const profile = createDefaultOpenAIProfile({
+      id: 'server-responses-profile',
+      apiKey: '',
+      apiProxy: true,
+      apiMode: 'responses',
+      model: DEFAULT_RESPONSES_MODEL,
+    })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...DEFAULT_SETTINGS,
+        apiMode: 'responses',
+        model: DEFAULT_RESPONSES_MODEL,
+        profiles: [profile],
+        activeProfileId: profile.id,
+        agentImageProfileId: profile.id,
+      }),
+      prompt: '生成一张儿童绘本插画',
+      inputImages: [],
+      maskDraft: null,
+      params: { ...DEFAULT_PARAMS },
+      appMode: 'agent',
+      tasks: [],
+      streamPreviews: {},
+      streamPreviewSlots: {},
+      agentConversations: [agentConversation({
+        id: 'title-conversation',
+        activeRoundId: null,
+        rounds: [],
+        messages: [],
+      })],
+      activeAgentConversationId: 'title-conversation',
+      agentEditingRoundId: null,
+      showToast,
+    })
+    vi.mocked(callServerManagedAgentApi).mockReset()
+    vi.mocked(callAgentConversationTitleApi).mockReset().mockResolvedValue('延后生成的标题')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('waits for the first server round before generating a text-only title', async () => {
+    let resolveRound!: (value: Awaited<ReturnType<typeof callServerManagedAgentApi>>) => void
+    const round = new Promise<Awaited<ReturnType<typeof callServerManagedAgentApi>>>((resolve) => {
+      resolveRound = resolve
+    })
+    vi.mocked(callServerManagedAgentApi).mockReturnValueOnce(round)
+    const submission = submitAgentMessage()
+
+    await vi.waitFor(() => expect(callServerManagedAgentApi).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    expect(callAgentConversationTitleApi).not.toHaveBeenCalled()
+
+    resolveRound({
+      text: '图片已生成。',
+      images: [],
+      outputItems: [{ type: 'message', content: [{ type: 'output_text', text: '图片已生成。' }] }],
+      responseId: 'response-title',
+      rawResponsePayload: '{}',
+    })
+    await submission
+    await vi.waitFor(() => expect(callAgentConversationTitleApi).toHaveBeenCalledTimes(1))
+
+    const titleOptions = vi.mocked(callAgentConversationTitleApi).mock.calls[0][0]
+    expect(titleOptions.prompt).toBe('生成一张儿童绘本插画')
+    expect('imageDataUrls' in titleOptions).toBe(false)
+  })
+
+  it('does not generate a title when the first server round fails', async () => {
+    vi.mocked(callServerManagedAgentApi).mockRejectedValueOnce(new Error('服务端 Agent 异步任务失败'))
+
+    await submitAgentMessage()
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0]?.rounds[0]?.status).toBe('error'))
+    expect(callAgentConversationTitleApi).not.toHaveBeenCalled()
   })
 })

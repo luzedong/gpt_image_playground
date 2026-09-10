@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
@@ -6,6 +6,7 @@ import { join } from 'node:path'
 const DATA_DIR = process.env.ASYNC_TASK_DATA_DIR || '/var/lib/gpt-image-playground/tasks'
 const MAX_BODY_BYTES = 600 * 1024 * 1024
 const MAX_INPUT_BYTES = 512 * 1024 * 1024
+const MAX_AGENT_ASSET_BYTES = 64 * 1024 * 1024
 const MAX_AUDIO_BASE64_BYTES = 10 * 1024 * 1024
 const MAX_1K_PIXELS = 1_572_864
 const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -17,6 +18,7 @@ const agentTaskCreationLocks = new Map()
 const agentEventClients = new Map()
 const upstreamLocks = new Map()
 const AGENT_IMAGE_DIR = join(DATA_DIR, 'agent-images')
+const AGENT_ASSET_DIR = join(DATA_DIR, 'agent-assets')
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload)
@@ -43,10 +45,31 @@ function agentImagePath(taskId, index) {
   return join(AGENT_IMAGE_DIR, `${taskId}-${index}.bin`)
 }
 
+function agentAssetPath(id) {
+  return join(AGENT_ASSET_DIR, `${id}.bin`)
+}
+
 function dataUrlToBuffer(dataUrl) {
   const match = /^data:[^;,]+;base64,([\s\S]+)$/i.exec(dataUrl)
   if (!match) throw new Error('生成图片格式无效')
   return Buffer.from(match[1], 'base64')
+}
+
+async function resolveAgentAssetInput(value) {
+  if (Array.isArray(value)) return Promise.all(value.map(resolveAgentAssetInput))
+  if (!value || typeof value !== 'object') return value
+  if (value.type === 'input_image' && typeof value.image_asset_id === 'string') {
+    const id = value.image_asset_id
+    const mime = typeof value.image_mime === 'string' && /^image\/[A-Za-z0-9.+-]+$/.test(value.image_mime)
+      ? value.image_mime
+      : 'image/png'
+    if (!/^(?:[a-f0-9]{64}|fallback-[a-f0-9]{16})$/i.test(id)) throw new Error('Agent 图片资产 ID 无效')
+    const data = await readFile(agentAssetPath(id))
+    const { image_asset_id: _assetId, image_mime: _imageMime, ...rest } = value
+    return { ...rest, image_url: `data:${mime};base64,${data.toString('base64')}` }
+  }
+  const entries = await Promise.all(Object.entries(value).map(async ([key, item]) => [key, await resolveAgentAssetInput(item)]))
+  return Object.fromEntries(entries)
 }
 
 async function writeJsonFile(path, value) {
@@ -131,30 +154,56 @@ function publicAgentProgress(task, includeImages = false) {
 function broadcastAgentEvent(task) {
   const clients = agentEventClients.get(task.id)
   if (!clients?.size) return
-  const payload = JSON.stringify({
-    id: task.id,
-    status: task.status,
-    error: task.error ?? null,
-    progress: publicAgentProgress(task, true),
-  })
-  for (const res of clients) {
+  const current = publicAgentProgress(task, true)
+  for (const client of clients) {
     try {
-      res.write(`event: progress\ndata: ${payload}\n\n`)
+      const previous = client.progress
+      const textOnlyAppend = previous
+        && current.revision > previous.revision
+        && current.text.startsWith(previous.text)
+        && current.imageRevision === previous.imageRevision
+        && JSON.stringify(current.outputItems) === JSON.stringify(previous.outputItems)
+        && JSON.stringify(current.pendingImages) === JSON.stringify(previous.pendingImages)
+        && JSON.stringify(current.images) === JSON.stringify(previous.images)
+        && task.status === client.status
+        && (task.error ?? null) === client.error
+      const payload = textOnlyAppend
+        ? {
+            id: task.id,
+            status: task.status,
+            error: task.error ?? null,
+            progress_delta: {
+              revision: current.revision,
+              text_delta: current.text.slice(previous.text.length),
+            },
+          }
+        : {
+            id: task.id,
+            status: task.status,
+            error: task.error ?? null,
+            progress: current,
+          }
+      client.res.write(`event: progress\ndata: ${JSON.stringify(payload)}\n\n`)
+      client.progress = current
+      client.status = task.status
+      client.error = task.error ?? null
     } catch {
-      clients.delete(res)
+      clients.delete(client)
     }
   }
 }
 
 function addAgentEventClient(task, req, res) {
   const clients = agentEventClients.get(task.id) || new Set()
-  clients.add(res)
+  const progress = publicAgentProgress(task, true)
+  const client = { res, progress, status: task.status, error: task.error ?? null }
+  clients.add(client)
   agentEventClients.set(task.id, clients)
   res.write(`event: progress\ndata: ${JSON.stringify({
     id: task.id,
     status: task.status,
     error: task.error ?? null,
-    progress: publicAgentProgress(task, true),
+    progress,
   })}\n\n`)
   const heartbeat = setInterval(() => {
     try {
@@ -165,7 +214,7 @@ function addAgentEventClient(task, req, res) {
   }, 15_000)
   const cleanup = () => {
     clearInterval(heartbeat)
-    clients.delete(res)
+    clients.delete(client)
     if (!clients.size) agentEventClients.delete(task.id)
   }
   req.on('close', cleanup)
@@ -192,9 +241,16 @@ async function handleAgentEvents(req, res, taskId) {
 
 async function persistAgentImages(task, images) {
   await mkdir(AGENT_IMAGE_DIR, { recursive: true })
+  await mkdir(AGENT_ASSET_DIR, { recursive: true })
   await Promise.all(images.map(async (image, index) => {
     image.mime = image.dataUrl.match(/^data:([^;,]+)/i)?.[1] || 'image/png'
-    await writeFile(agentImagePath(task.id, index), dataUrlToBuffer(image.dataUrl))
+    const data = dataUrlToBuffer(image.dataUrl)
+    const canonicalDataUrl = `data:${image.mime};base64,${data.toString('base64')}`
+    image.assetId = createHash('sha256').update(canonicalDataUrl).digest('hex')
+    await Promise.all([
+      writeFile(agentImagePath(task.id, index), data),
+      writeFile(agentAssetPath(image.assetId), data),
+    ])
   }))
 }
 
@@ -262,10 +318,10 @@ function publicTask(task, includeResult = false) {
   }
 }
 
-function readRequestBody(req) {
+function readRequestBuffer(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const contentLength = Number(req.headers['content-length'] || 0)
-    if (contentLength > MAX_BODY_BYTES) {
+    if (contentLength > maxBytes) {
       reject(new Error('请求体过大'))
       req.resume()
       return
@@ -275,16 +331,20 @@ function readRequestBody(req) {
     let total = 0
     req.on('data', (chunk) => {
       total += chunk.length
-      if (total > MAX_BODY_BYTES) {
+      if (total > maxBytes) {
         reject(new Error('请求体过大'))
         req.destroy()
         return
       }
       chunks.push(chunk)
     })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
+}
+
+async function readRequestBody(req) {
+  return (await readRequestBuffer(req)).toString('utf8')
 }
 
 function dataUrlToBlob(dataUrl) {
@@ -1018,7 +1078,7 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
 }
 
 async function executeAgentUpstream(task) {
-  let input = task.input
+  let input = await resolveAgentAssetInput(task.input)
   const tools = createAgentTools()
   const references = collectAgentReferenceImages(input)
   const outputItems = []
@@ -1369,15 +1429,64 @@ async function handleCreateAgent(req, res) {
   }
 }
 
+async function handleCheckAgentAssets(req, res) {
+  try {
+    const body = JSON.parse(await readRequestBody(req))
+    if (!Array.isArray(body?.ids) || body.ids.length > 1000) throw new Error('Agent 图片资产列表无效')
+    const ids = [...new Set(body.ids)]
+    if (ids.some((id) => typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id))) {
+      throw new Error('Agent 图片资产 ID 无效')
+    }
+    const missing = []
+    for (const id of ids) {
+      try {
+        await access(agentAssetPath(id))
+      } catch {
+        missing.push(id)
+      }
+    }
+    json(res, 200, { missing })
+  } catch (error) {
+    json(res, 400, { error: { message: error instanceof Error ? error.message : String(error) } })
+  }
+}
+
+async function handlePutAgentAsset(req, res, id) {
+  try {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Agent 图片资产 ID 无效')
+    const mime = String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
+    if (!/^image\/[a-z0-9.+-]+$/.test(mime)) throw new Error('Agent 图片资产格式无效')
+    const data = await readRequestBuffer(req, MAX_AGENT_ASSET_BYTES)
+    if (data.byteLength === 0) throw new Error('Agent 图片资产不能为空')
+    const canonicalDataUrl = `data:${mime};base64,${data.toString('base64')}`
+    const actualId = createHash('sha256').update(canonicalDataUrl).digest('hex')
+    if (actualId !== id) throw new Error('Agent 图片资产校验失败')
+    await mkdir(AGENT_ASSET_DIR, { recursive: true })
+    await writeFile(agentAssetPath(id), data)
+    json(res, 201, { id })
+  } catch (error) {
+    json(res, 400, { error: { message: error instanceof Error ? error.message : String(error) } })
+  }
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   const match = url.pathname.match(/^\/api-tasks\/([a-f0-9-]+)$/i)
+  const agentAssetMatch = url.pathname.match(/^\/api-agent-assets\/([a-f0-9]{64})$/)
   const agentProgressMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/progress$/)
   const agentEventsMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/events$/)
   const agentResultMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/result$/)
   const agentMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)$/)
   if (req.method === 'POST' && url.pathname === '/api-agent-tasks') {
     await handleCreateAgent(req, res)
+    return
+  }
+  if (req.method === 'POST' && url.pathname === '/api-agent-assets/check') {
+    await handleCheckAgentAssets(req, res)
+    return
+  }
+  if (req.method === 'PUT' && agentAssetMatch) {
+    await handlePutAgentAsset(req, res, agentAssetMatch[1])
     return
   }
   if (req.method === 'POST' && url.pathname === '/api-speech-to-text') {
@@ -1448,6 +1557,7 @@ const server = createServer(async (req, res) => {
 
 await mkdir(DATA_DIR, { recursive: true })
 await mkdir(AGENT_IMAGE_DIR, { recursive: true })
+await mkdir(AGENT_ASSET_DIR, { recursive: true })
 await cleanupTasks()
 await restoreTasks()
 setInterval(() => void cleanupTasks(), 6 * 60 * 60 * 1000)

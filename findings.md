@@ -17,3 +17,28 @@
 - 图片结果新增 `startedAt`/`finishedAt`，图片任务计时不再包含 Agent 最终文字回复时间。
 - 最新任务 `mtonjekl3ix7e` 对齐结果：图片工具完成于 `17:26:06`，进度接口在 `17:26:07` 被前端发现，图片资源请求在 `17:26:14` 完成；服务端并非等到最终回复才提供图片，但旧前端仍要等本地 IndexedDB/缩略图流程完成才渲染。
 - 已改为任务卡收到 `previewImageUrl` 后直接展示服务端图片，后台再完成本地持久化。
+- 2026-09-06 公网测速：同一张 2,644,716 字节 PNG 在服务器本机经 Nginx/Node 下载仅 0.078–0.099 秒（27–34 MB/s），从当前开发机访问公网地址稳定为 7.31–7.39 秒（约 0.36 MB/s、2.9 Mbps）。
+- 同服务器 1,011,333 字节静态 JS 也稳定为约 0.37 MB/s，证明图片接口和任务 JSON 解析不是 7 秒下载的主因；瓶颈位于服务器公网出口或当前网络到服务器的链路。
+- 图片接口暂不支持 Range（Range 请求返回 200 和完整文件），响应由 Node 代理且无显式 `Content-Length`，但本机测速表明这些不是当前主要瓶颈。
+- 服务端配置模式下 `normalizeSettings()` 原先无条件把 `agentImageProfileId` 写成 `default-openai`，导致 Agent 设置页选择 AILink 后保存/刷新又回到 AIPixel；普通画廊的 profile 路由逻辑仍按传入的 profile ID 分流。
+- 网络搜索原先受 `agentWebSearch` 和旧配置控制；已改为前端 Responses 请求、服务端 Agent 任务及设置归一化均强制启用，避免旧缓存或用户开关关闭搜索能力。
+- 顶部切换图像配置只更新 `activeProfileId`，Agent 使用独立的 `agentImageProfileId`，因此顶部选 AILink 时 Agent 仍记录为 AIPixel；现已在服务端固定配置下同步两者，并允许空 Key 的代理预置配置出现在 Agent 图像配置下拉框中。
+- 线上最新任务文件确认实际 `profileId` 仍为 `default-openai`；根因是服务端模式按“旧浏览器是否保存过 AILink”决定是否创建 AILink，空白/旧初始化状态会永久缺少该配置。现改为服务端模式始终注入两套图像配置，并用当前选中的图像 profile 作为 Agent/画廊共同选择源。
+- 2026-09-08 线上 Agent 失败排查：`mts36vx84bes6` 使用 AIPixel，图片已于约 40 秒内生成并写入进度，但后续聊天 Responses 请求返回 `Upstream service temporarily unavailable`，整轮因此被标记 error；`mts3uisw1ohqf` 使用 AILink，图片已写入进度，后续图像调用触发 `Concurrency limit exceeded for account, please retry later`。
+- 当前服务端 `CONCURRENCY=2`，且批量生图使用 `Promise.all`，没有按图像供应商串行化；`runTask` 对 Agent 的后续错误会丢弃部分结果，前端事件流错误分支也没有带回任务真实错误文本。
+- 修复方向：对上游 408/425/429/5xx、临时不可用和并发超限做有限退避重试；以图像上游 base URL 为锁键串行化调用；Agent 已有图片但最终聊天失败时返回已有图片和可读的整理失败提示，任务保持可恢复的 done 状态。
+- 2026-09-09 生图模型可配置排查：服务端已存在 `IMAGE_PIXEL_*_MODEL` / `IMAGE_AILINK_*_MODEL` 的读取逻辑，但部署配置未声明这些变量；前端服务端托管模式会把 profile 模型重置为 `gpt-image-2`，异步图片和 Agent 请求也没有向服务端传模型，因此实际无法切换。
+- 已将模型 ID 设为服务端托管模式中唯一可编辑的图像连接参数；AIPixel 和 AILink 分别持久化自己的模型。服务端按任务保存并使用请求模型，缺省时按对应 1K/4K 环境变量回退，最终默认 `gpt-image-2`。
+- 2026-09-09 移动端图片编辑无法保存并非画布导出失败：`MaskEditorModal` 的保存按钮位于头部右侧，已有遮罩时头部各项最小宽度超过窄屏可用宽度，按钮因此落到视口外且父级没有换行。修复后移动端操作区固定宽度，保留可见的保存按钮。
+- 实机截图显示第一版压缩布局后头部仍整体空白，说明不只是横向溢出；iOS 主屏幕 PWA 下全屏 fixed 元素的变换动画、安全区 padding 与 flex 组合存在定位异常。第二版让移动端头部拥有明确的 `安全区 + 48px` 高度，并把操作行锚定到底边，不再依赖安全区参与 flex 内容定位。
+- 品牌标题此前分别散落在 `index.html`、PWA manifest 和页面 Header 中，浏览器标签仍读取 `GPT Image Playground`；旧图标来自 `public/pwa-icon.svg`。现统一到“绘语”和用户提供的 PNG，并通过新的 Service Worker 缓存名触发应用壳更新。
+- 2026-09-09 字体加载排查：`src/index.css` 同时导入 ZeoSeven 和 jsDelivr 字体 CSS；HarmonyOS Regular、Medium、Bold 单个约 4.4 MB，首屏需跨站下载约 13 MB，导致 Network 长时间显示“待处理”。ZeoSeven 的 Maple Mono 字体族与项目声明也不完全匹配。移除两条外部 `@import`，改用系统中文和等宽字体，可消除这些阻塞请求并保留跨平台可读性。
+- 2026-09-09 对话/生图带宽审计：服务端托管 Agent 每轮由 `buildAgentApiInput()` 重建完整分支历史，历史用户参考图和历史生成图均以 Base64 Data URL 放入 `/api-agent-tasks` JSON；同一输入随后又由任务服务转发给聊天上游。随着轮次和图片数增长，浏览器上传和服务器上行会线性累积。
+- 新会话首轮会并发执行主 Agent 请求和 AI 标题请求；标题请求再次读取并上传全部首轮参考图。标题与主请求共用聊天账号，既重复图片流量，也会争抢上游并发。
+- Agent 在图片工具完成后会把完整生成图 Base64 附加到下一次聊天请求，用于整理最终回复；这是后台显示图片生成完成后仍有一段等待的主要网络环节之一。
+- 线上样本 `mttqyfc29rcl2` 的单图二进制为 2,371,993 字节，对应 Data URL Base64 为 3,162,660 字符，上传 JSON 膨胀约 33%。一张图若同时进入主请求和标题请求，浏览器首轮上传约 6.3 MB。
+- 普通 `/api-tasks` 生图完成后仍通过 JSON 返回 Base64 图片。样本 JSON 为 2,387,044 字节，gzip 后 1,728,449 字节，对应原始图片约 1,789,944 字节；由于 Nginx gzip 已抵消大部分 Base64 下行膨胀，改二进制资源对纯下行字节收益有限，但可避免大 JSON 解析、支持缓存并降低内存峰值。
+- Agent 图片已经走独立二进制资源、`Content-Length`、ETag 和 immutable 缓存；最终结果再次 fetch 同一 URL 时通常命中浏览器缓存，不是当前主要重复流量。
+- Agent SSE 每 250ms 最多发送一次完整累计进度快照，而不是文本增量。线上 72 秒样本最终快照约 20.9 KB、revision 282；长回复会产生重复前缀和重复 outputItems，适合改为增量事件，首次连接/重连保留完整快照。
+- 普通生图每 2 秒轮询一次轻量 `?meta=1` 状态；30 秒任务约 15 次请求，但状态体很小，优先级明显低于图片历史重传。
+- Agent 主任务 JSON 仍保留生成图 Base64，同时又写独立 `.bin`。线上任务目录约 289 MB、仅 19 张 Agent 独立图片；移除任务 JSON 中的图片副本主要改善磁盘和服务重启扫描，不直接节省正常客户端流量。

@@ -2116,7 +2116,6 @@ function appendAgentAssistantMessageContent(conversationId: string, messageId: s
 async function generateAgentConversationTitle(
   conversationId: string,
   prompt: string,
-  inputImageIds: string[],
   requestSettings: AppSettings,
   activeProfile: ApiProfile,
   fallbackTitle: string,
@@ -2126,12 +2125,10 @@ async function generateAgentConversationTitle(
     return { agentGeneratingTitleIds: next }
   })
   try {
-    const imageDataUrls = await readAgentImageDataUrls(inputImageIds)
     const title = await callAgentConversationTitleApi({
       settings: requestSettings,
       profile: activeProfile,
       prompt,
-      imageDataUrls,
     })
     if (!title || title === fallbackTitle) return
 
@@ -2819,11 +2816,12 @@ async function executeServerManagedAgentRound(opts: {
   apiInput: unknown[]
   params: TaskParams
   requestSettings: AppSettings
+  activeProfile: ApiProfile
   imageProfile: ApiProfile
   signal: AbortSignal
   startedAt: number
 }) {
-  const { conversationId, round, roundId, assistantMessageId, apiInput, params, requestSettings, imageProfile, signal, startedAt } = opts
+  const { conversationId, round, roundId, assistantMessageId, apiInput, params, requestSettings, activeProfile, imageProfile, signal, startedAt } = opts
   updateAgentConversation(conversationId, (current) => ({
     ...current,
     updatedAt: Date.now(),
@@ -2873,6 +2871,16 @@ async function executeServerManagedAgentRound(opts: {
     imageProfile,
     result,
   )
+
+  const latestConversation = useStore.getState().agentConversations.find((item) => item.id === conversationId)
+  const fallbackTitle = createAgentConversationTitle(round.prompt, '新对话')
+  if (
+    latestConversation &&
+    latestConversation.rounds[0]?.id === roundId &&
+    latestConversation.title === fallbackTitle
+  ) {
+    void generateAgentConversationTitle(conversationId, round.prompt, requestSettings, activeProfile, fallbackTitle)
+  }
 }
 
 export async function submitAgentMessage() {
@@ -2986,10 +2994,8 @@ export async function submitAgentMessage() {
     createdAt: now,
   }
 
-  let fallbackTitle: string | null = null
   updateAgentConversation(conversation.id, (current) => {
     const nextTitle = current.rounds.length === 0 ? createAgentConversationTitle(trimmedPrompt, current.title) : current.title
-    if (current.rounds.length === 0) fallbackTitle = nextTitle
     const messages = shouldAppendToEditingRound
       ? current.messages.some((message) => message.id === userMessageId)
         ? current.messages.map((message) => {
@@ -3020,10 +3026,6 @@ export async function submitAgentMessage() {
   state.setAgentEditingRoundId(null)
 
   if (isServerManagedApiConfigEnabled()) await flushAgentConversationsToIndexedDB()
-
-  if (fallbackTitle) {
-    void generateAgentConversationTitle(conversation.id, trimmedPrompt, inputImageIds, requestSettings, activeProfile, fallbackTitle)
-  }
 
   void executeAgentRound(conversation.id, roundId, normalizedParams, requestSettings, activeProfile, imageProfile)
 }
@@ -3192,6 +3194,7 @@ async function executeAgentRound(
         apiInput,
         params: { ...imageParams, n: DEFAULT_PARAMS.n, transparent_output: false },
         requestSettings,
+        activeProfile,
         imageProfile,
         signal: controller.signal,
         startedAt,

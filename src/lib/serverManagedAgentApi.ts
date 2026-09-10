@@ -1,6 +1,7 @@
 import type { AgentApiResult } from './agentApi'
 import type { TaskParams } from '../types'
-import { blobToDataUrl } from './dataUrl'
+import { blobToDataUrl, dataUrlToBytes } from './dataUrl'
+import { hashDataUrl } from './db'
 
 export interface ServerAgentPendingImage {
   toolCallId: string
@@ -32,7 +33,13 @@ type ServerAgentTaskResponse = {
   error?: { message?: string } | string
   progress?: ServerAgentTaskProgress
   result?: Omit<AgentApiResult, 'images'> & { images: ServerAgentProgressImage[] }
+  progress_delta?: {
+    revision: number
+    text_delta: string
+  }
 }
+
+const knownServerAgentAssets = new Set<string>()
 
 class ServerAgentTaskRequestError extends Error {
   retryable: boolean
@@ -56,6 +63,76 @@ async function readResponse(response: Response): Promise<ServerAgentTaskResponse
   } catch {
     return {}
   }
+}
+
+function collectImageDataUrls(value: unknown, target: Set<string>) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectImageDataUrls(item, target))
+    return
+  }
+  if (!value || typeof value !== 'object') return
+  const record = value as Record<string, unknown>
+  if (record.type === 'input_image' && typeof record.image_url === 'string' && record.image_url.startsWith('data:image/')) {
+    target.add(record.image_url)
+  }
+  Object.values(record).forEach((item) => collectImageDataUrls(item, target))
+}
+
+function replaceImageDataUrls(value: unknown, assets: Map<string, { id: string; mime: string }>): unknown {
+  if (Array.isArray(value)) return value.map((item) => replaceImageDataUrls(item, assets))
+  if (!value || typeof value !== 'object') return value
+  const record = value as Record<string, unknown>
+  const asset = typeof record.image_url === 'string' ? assets.get(record.image_url) : undefined
+  if (record.type === 'input_image' && asset) {
+    const { image_url: _imageUrl, ...rest } = record
+    return { ...rest, image_asset_id: asset.id, image_mime: asset.mime }
+  }
+  return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, replaceImageDataUrls(item, assets)]))
+}
+
+async function prepareServerManagedAgentInput(input: unknown[]) {
+  const dataUrls = new Set<string>()
+  collectImageDataUrls(input, dataUrls)
+  if (dataUrls.size === 0) return input
+
+  const assets = new Map<string, { id: string; mime: string; bytes: Uint8Array }>()
+  for (const dataUrl of dataUrls) {
+    const mime = dataUrl.match(/^data:([^;,]+);base64,/i)?.[1] || 'image/png'
+    const canonicalDataUrl = `data:${mime};base64,${dataUrl.slice(dataUrl.indexOf(',') + 1)}`
+    const id = await hashDataUrl(canonicalDataUrl)
+    if (id.startsWith('fallback-')) return input
+    assets.set(dataUrl, { id, mime, bytes: dataUrlToBytes(dataUrl).bytes })
+  }
+
+  const uncheckedIds = [...new Set([...assets.values()].map((asset) => asset.id).filter((id) => !knownServerAgentAssets.has(id)))]
+  if (uncheckedIds.length > 0) {
+    const response = await fetch(`${import.meta.env.BASE_URL}api-agent-assets/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ ids: uncheckedIds }),
+    })
+    if (!response.ok) {
+      if (response.status === 404 || response.status === 405) return input
+      throw new Error(`检查 Agent 图片资产失败：HTTP ${response.status}`)
+    }
+    const payload = await response.json() as { missing?: unknown }
+    const missing = new Set(Array.isArray(payload.missing) ? payload.missing.filter((id): id is string => typeof id === 'string') : [])
+    for (const asset of assets.values()) {
+      if (!missing.has(asset.id)) continue
+      const upload = await fetch(`${import.meta.env.BASE_URL}api-agent-assets/${encodeURIComponent(asset.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': asset.mime },
+        cache: 'no-store',
+        body: new Blob([asset.bytes.slice()], { type: asset.mime }),
+      })
+      if (!upload.ok) throw new Error(`上传 Agent 图片资产失败：HTTP ${upload.status}`)
+    }
+    uncheckedIds.forEach((id) => knownServerAgentAssets.add(id))
+  }
+
+  const replacements = new Map([...assets].map(([dataUrl, asset]) => [dataUrl, { id: asset.id, mime: asset.mime }]))
+  return replaceImageDataUrls(input, replacements) as unknown[]
 }
 
 async function fetchTask(taskId: string, signal: AbortSignal | undefined, path: string) {
@@ -203,13 +280,14 @@ export async function callServerManagedAgentApi(opts: {
   pollIntervalMs?: number
   onProgress?: (progress: ServerAgentTaskProgress) => void | Promise<void>
 }): Promise<AgentApiResult> {
+  const input = await prepareServerManagedAgentInput(opts.input)
   const response = await fetch(`${import.meta.env.BASE_URL}api-agent-tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     cache: 'no-store',
     body: JSON.stringify({
       task_id: opts.taskId,
-      input: opts.input,
+      input,
       instructions: opts.instructions,
       params: opts.params,
       image_profile_id: opts.imageProfileId,
@@ -229,14 +307,30 @@ export async function callServerManagedAgentApi(opts: {
   let retryAttempt = 0
   let progressRevision = 0
   let imageRevision = 0
+  let latestProgress: ServerAgentTaskProgress | null = null
 
   const publishProgress = async (payload: ServerAgentTaskResponse) => {
+    if (payload.progress_delta) {
+      if (!latestProgress || payload.progress_delta.revision <= progressRevision) return
+      latestProgress = {
+        ...latestProgress,
+        revision: payload.progress_delta.revision,
+        text: `${latestProgress.text}${payload.progress_delta.text_delta}`,
+      }
+      progressRevision = latestProgress.revision
+      void opts.onProgress?.(latestProgress)
+      return
+    }
+
     const progress = payload.progress
-    if (!progress || progress.revision <= progressRevision) return
+    if (!progress || progress.revision < progressRevision) return
+    const addsImagesToCurrentRevision = progress.revision === progressRevision && Boolean(progress.images?.length) && !latestProgress?.images?.length
+    if (progress.revision === progressRevision && !addsImagesToCurrentRevision) return
 
     if (progress.imageRevision > imageRevision && !progress.images) {
       const imagePayload = await fetchTask(created.task_id!, opts.signal, '/progress')
       if (imagePayload.progress) {
+        latestProgress = imagePayload.progress
         progressRevision = imagePayload.progress.revision
         imageRevision = imagePayload.progress.imageRevision
         void opts.onProgress?.(imagePayload.progress)
@@ -244,6 +338,7 @@ export async function callServerManagedAgentApi(opts: {
       }
     }
 
+    latestProgress = progress
     progressRevision = progress.revision
     imageRevision = progress.imageRevision
     void opts.onProgress?.(progress)
