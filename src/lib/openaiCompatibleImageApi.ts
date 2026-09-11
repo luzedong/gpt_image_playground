@@ -490,8 +490,9 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
     ? `${PROMPT_REWRITE_GUARD_PREFIX}\n${sizePrompt}`
     : sizePrompt
   const isPixelApi = isPixelApiBaseUrl(profile.baseUrl) || (isServerManagedApiConfigEnabled() && profile.provider === 'openai')
-  const requestImageDataUrls = isPixelApi ? inputImageDataUrls.slice(0, 1) : inputImageDataUrls
+  const requestImageDataUrls = inputImageDataUrls
   const isEdit = requestImageDataUrls.length > 0
+  const imageField = isPixelApi && requestImageDataUrls.length === 1 ? 'image' : 'image[]'
   const mime = isPixelApi ? 'image/png' : MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
@@ -558,7 +559,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
       for (let i = 0; i < imageBlobs.length; i++) {
         const blob = imageBlobs[i]
         const ext = blob.type.split('/')[1] || 'png'
-        formData.append(isPixelApi ? 'image' : 'image[]', blob, `input-${i + 1}.${ext}`)
+        formData.append(imageField, blob, `input-${i + 1}.${ext}`)
       }
 
       if (maskBlob) {

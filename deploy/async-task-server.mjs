@@ -637,8 +637,9 @@ async function executeUpstream(task) {
 async function executeUpstreamRequest(task, config) {
   const headers = { Authorization: `Bearer ${config.apiKey}` }
   const isPixel = config.isPixel
-  const inputImages = isPixel ? task.inputImages.slice(0, 1) : task.inputImages
+  const inputImages = task.inputImages
   const isEdit = inputImages.length > 0
+  const imageField = isPixel && inputImages.length === 1 ? 'image' : 'image[]'
   const requestStartedAt = Date.now()
   let response
   if (isEdit) {
@@ -659,7 +660,7 @@ async function executeUpstreamRequest(task, config) {
     for (let index = 0; index < inputImages.length; index++) {
       const blob = dataUrlToBlob(inputImages[index])
       const extension = blob.type.split('/')[1] || 'png'
-      form.append(isPixel ? 'image' : 'image[]', blob, `input-${index + 1}.${extension}`)
+      form.append(imageField, blob, `input-${index + 1}.${extension}`)
     }
     if (task.maskDataUrl) form.append('mask', dataUrlToBlob(task.maskDataUrl), 'mask.png')
     if (!isPixel) form.append('response_format', 'b64_json')

@@ -201,3 +201,9 @@
 - 服务端 `/api-tasks` 新增 `client_task_id`，同 ID 重试直接返回已有任务，并用创建锁处理并发重复请求。
 - 客户端服务端生图请求携带本地任务 ID；`submitTask` 增加整体提交锁，`retryTask` 增加按原任务 ID 的重试锁，防止连续点击创建多条任务。
 - 本地临时服务验证：相同 `client_task_id` 连续 POST 两次，返回同一个任务 ID。
+
+## 2026-09-11 AIPixel 多图验证
+
+- 受控调用 AIPixel `/images/edits`，使用两张测试 PNG 和字段 `image[]`，模型 `gpt-image-2.5-flare`，返回 HTTP 200 并生成 1 张图片。
+- 移除 AIPixel 只取第一张参考图的截断逻辑：单图仍使用 `image`，多图改用 `image[]`。
+- 本地验证通过：`node --check`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。

@@ -216,7 +216,7 @@ describe('callImageApi', () => {
     expect(body.size).toBeUndefined()
   })
 
-  it('uses singular image fields for the documented Pixel edits endpoint', async () => {
+  it('uses image[] for multi-image Pixel edits', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
       data: [{ b64_json: 'aW1hZ2U=' }],
     }), {
@@ -250,8 +250,8 @@ describe('callImageApi', () => {
     const [url, init] = fetchMock.mock.calls.find(([, request]) => (request as RequestInit | undefined)?.body instanceof FormData)!
     const body = (init as RequestInit).body as FormData
     expect(url).toBe('https://api.ai-pixel.online/v1/images/edits')
-    expect(body.getAll('image')).toHaveLength(1)
-    expect(body.getAll('image[]')).toHaveLength(0)
+    expect(body.getAll('image')).toHaveLength(0)
+    expect(body.getAll('image[]')).toHaveLength(2)
     expect(body.get('model')).toBe('gpt-image-1')
     expect(body.get('prompt')).toBe('edit prompt')
     expect(body.get('size')).toBe('1024x1024')
@@ -325,6 +325,8 @@ describe('callImageApi', () => {
     const [, init] = fetchMock.mock.calls.find(([, request]) => (request as RequestInit | undefined)?.body instanceof FormData)!
     const body = (init as RequestInit).body as FormData
     expect(body.get('response_format')).toBeNull()
+    expect(body.getAll('image')).toHaveLength(1)
+    expect(body.getAll('image[]')).toHaveLength(0)
   })
 
   it('requests a transparent background from the Responses API image tool', async () => {
