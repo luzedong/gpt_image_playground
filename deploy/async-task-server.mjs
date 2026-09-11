@@ -384,6 +384,40 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime })
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const STRIPPED_PNG_CHUNKS = new Set(['caBX', 'c2pa'])
+
+function stripPngMetadataChunks(buffer) {
+  if (buffer.length < 8 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) return buffer
+  const chunks = [buffer.subarray(0, 8)]
+  let offset = 8
+  let removed = false
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset)
+    const end = offset + 12 + length
+    if (end > buffer.length) break
+    const type = buffer.toString('latin1', offset + 4, offset + 8)
+    if (STRIPPED_PNG_CHUNKS.has(type)) {
+      removed = true
+    } else {
+      chunks.push(buffer.subarray(offset, end))
+    }
+    offset = end
+    if (type === 'IEND') break
+  }
+  if (!removed) return buffer
+  if (offset < buffer.length) chunks.push(buffer.subarray(offset))
+  return Buffer.concat(chunks)
+}
+
+async function sanitizeImageBlobForUpstream(blob) {
+  if (blob.type !== 'image/png') return blob
+  const buffer = Buffer.from(await blob.arrayBuffer())
+  const sanitized = stripPngMetadataChunks(buffer)
+  if (sanitized === buffer) return blob
+  return new Blob([sanitized], { type: 'image/png' })
+}
+
 function dataUrlByteLength(dataUrl) {
   const match = /^data:[^,]+,([\s\S]*)$/i.exec(dataUrl)
   if (!match) return 0
@@ -658,11 +692,11 @@ async function executeUpstreamRequest(task, config) {
     }
     if (task.params.n > 1) form.append('n', String(task.params.n))
     for (let index = 0; index < inputImages.length; index++) {
-      const blob = dataUrlToBlob(inputImages[index])
+      const blob = await sanitizeImageBlobForUpstream(dataUrlToBlob(inputImages[index]))
       const extension = blob.type.split('/')[1] || 'png'
       form.append(imageField, blob, `input-${index + 1}.${extension}`)
     }
-    if (task.maskDataUrl) form.append('mask', dataUrlToBlob(task.maskDataUrl), 'mask.png')
+    if (task.maskDataUrl) form.append('mask', await sanitizeImageBlobForUpstream(dataUrlToBlob(task.maskDataUrl)), 'mask.png')
     if (!isPixel) form.append('response_format', 'b64_json')
     response = await fetchUpstreamWithRetry(`${config.baseUrl}/images/edits`, { method: 'POST', headers, body: form }, 600_000, true)
   } else {

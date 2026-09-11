@@ -225,3 +225,9 @@
 - 线上日志确认 DeepSeek 在工具调用前只发送 `response.reasoning_text.delta`，真正的 `function_call` 直到 `response.output_item.added` / arguments done 才出现。
 - 服务端此前只转发 `response.output_text.delta`，没有把工具项和参数增量上报到 Agent 进度，导致前端在生图决策阶段长时间只显示等待，最后一次性出现工具调用。
 - 服务端现在会在 `response.output_item.added/done` 和 `response.function_call_arguments.delta/done` 时立即广播 output items；空参数工具占位会被过滤，参数完整后立即显示生图工具状态。
+
+## 2026-09-11 PNG 元数据剥离
+
+- 失败资产检查发现参考图是标准 1024×1024 8-bit RGB PNG，但仍包含 `caBX` PNG chunk（C2PA 元数据）。
+- 受控测试确认：保留 `caBX` 时 AILink 返回 `Invalid image file or mode`；剥离 `caBX` 后同一张图返回 HTTP 200 并成功生成。
+- 服务端在上传 AIPixel/AILink 前统一剥离 PNG 的 `caBX` / `c2pa` chunk，仅移除元数据，不改图片像素、尺寸或格式。
