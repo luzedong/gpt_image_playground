@@ -108,10 +108,10 @@ export default function Header() {
               {showFavoriteCollectionTitle ? (
                 <>
                   <span className="min-w-0 truncate text-[17px] font-bold tracking-tight text-gray-800 dark:text-gray-100 sm:hidden" title={favoriteCollectionTitle}>{favoriteCollectionTitle}</span>
-                  <span className="hidden text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100 sm:inline">绘语</span>
+                  <span className="hidden text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100 sm:inline">IMAGE</span>
                 </>
               ) : (
-                <span className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">绘语</span>
+                <span className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">IMAGE</span>
               )}
             </h1>
             {appMode === 'agent' && <div className="hidden sm:flex items-center gap-1 relative">

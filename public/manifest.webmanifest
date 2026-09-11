@@ -1,7 +1,7 @@
 {
-  "name": "绘语",
-  "short_name": "绘语",
-  "description": "绘语 AI 图像创作工作台",
+  "name": "IMAGE",
+  "short_name": "IMAGE",
+  "description": "IMAGE AI 图像创作工作台",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

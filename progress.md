@@ -171,3 +171,8 @@
 - 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）、`git diff --check`。
 - 提交 `0556826` 已推送；服务器使用 `deploy/Dockerfile` 构建镜像 `gpt-image-playground:0556826`，并按原端口、重启策略、API 配置只读挂载和任务数据挂载重建容器。
 - 部署后容器运行正常，本机和公网首页均返回 200，`/api-agent-assets/check` 返回 `{"missing":[]}`，容器内服务端文件确认包含文案异步整理逻辑。
+
+## 2026-09-11 应用标题改为 IMAGE
+
+- 将浏览器标题、iOS/PWA 应用名、PWA manifest 名称和页面顶栏品牌从“绘语”统一改为 `IMAGE`。
+- 生产构建和完整测试（37 个测试文件、567 项）均通过。
