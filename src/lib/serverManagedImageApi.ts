@@ -1,4 +1,5 @@
 import type { ApiProfile } from '../types'
+import { normalizeImageDataUrlForApi } from './canvasImage'
 import type { CallApiOptions, CallApiResult } from './imageApiShared'
 
 type ServerTaskResponse = {
@@ -43,6 +44,7 @@ function ensureResult(payload: ServerTaskResponse): CallApiResult {
 export async function callServerManagedImageApi(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
   let taskId = opts.serverTaskId
   if (!taskId) {
+    const inputImages = await Promise.all(opts.inputImageDataUrls.map((dataUrl) => normalizeImageDataUrlForApi(dataUrl)))
     const response = await fetch(`${import.meta.env.BASE_URL}api-tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -50,7 +52,7 @@ export async function callServerManagedImageApi(opts: CallApiOptions, profile: A
       body: JSON.stringify({
         prompt: opts.prompt,
         params: opts.params,
-        inputImages: opts.inputImageDataUrls,
+        inputImages,
         maskDataUrl: opts.maskDataUrl,
         profileId: profile.id,
         model: profile.model,

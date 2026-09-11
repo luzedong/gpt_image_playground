@@ -207,3 +207,9 @@
 - 受控调用 AIPixel `/images/edits`，使用两张测试 PNG 和字段 `image[]`，模型 `gpt-image-2.5-flare`，返回 HTTP 200 并生成 1 张图片。
 - 移除 AIPixel 只取第一张参考图的截断逻辑：单图仍使用 `image`，多图改用 `image[]`。
 - 本地验证通过：`node --check`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。
+
+## 2026-09-11 输入图片格式标准化
+
+- AIPixel 和 AILink 请求前统一将参考图重新编码为尺寸不变、白底、无透明通道的 8-bit RGB PNG。
+- 服务端托管请求与直连客户端请求两条链路均接入标准化；解码失败时保留原图并记录警告。
+- 本地验证通过：`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。

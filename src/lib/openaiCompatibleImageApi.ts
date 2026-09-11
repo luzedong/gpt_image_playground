@@ -1,5 +1,5 @@
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefinition, type CustomProviderPollMapping, type CustomProviderResultMapping, type CustomProviderSubmitMapping, type ImageApiResponse, type ImageResponseItem, type ResponsesApiResponse, type ResponsesOutputItem, type TaskParams } from '../types'
-import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
+import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob, normalizeImageDataUrlForApi } from './canvasImage'
 import { buildApiUrl, getImageApiProxyRoute, isServerManagedApiConfigEnabled, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
 import {
   assertImageInputPayloadSize,
@@ -38,6 +38,10 @@ function appendQuery(path: string, query?: Record<string, string>): string {
 
 function isPixelApiBaseUrl(baseUrl: string) {
   return /(?:^|\/\/)(?:api\.)?ai-pixel\.online(?=[:/]|$)/i.test(baseUrl.trim())
+}
+
+function isAilinkApiBaseUrl(baseUrl: string) {
+  return /(?:^|\/\/)direct\.linkai\.pics(?=[:/]|$)/i.test(baseUrl.trim())
 }
 
 function createOpenAICompatiblePaths(baseUrl: string) {
@@ -490,7 +494,9 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
     ? `${PROMPT_REWRITE_GUARD_PREFIX}\n${sizePrompt}`
     : sizePrompt
   const isPixelApi = isPixelApiBaseUrl(profile.baseUrl) || (isServerManagedApiConfigEnabled() && profile.provider === 'openai')
-  const requestImageDataUrls = inputImageDataUrls
+  const requestImageDataUrls = isPixelApi || isAilinkApiBaseUrl(profile.baseUrl)
+    ? await Promise.all(inputImageDataUrls.map((dataUrl) => normalizeImageDataUrlForApi(dataUrl)))
+    : inputImageDataUrls
   const isEdit = requestImageDataUrls.length > 0
   const imageField = isPixelApi && requestImageDataUrls.length === 1 ? 'image' : 'image[]'
   const mime = isPixelApi ? 'image/png' : MIME_MAP[params.output_format] || 'image/png'

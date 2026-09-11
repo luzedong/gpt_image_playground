@@ -34,6 +34,24 @@ export async function maskDataUrlToPngBlob(maskDataUrl: string): Promise<Blob> {
   return blob
 }
 
+export async function normalizeImageDataUrlForApi(dataUrl: string): Promise<string> {
+  try {
+    const image = await loadImage(dataUrl)
+    const canvas = document.createElement('canvas')
+    canvas.width = image.naturalWidth
+    canvas.height = image.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('当前浏览器不支持 Canvas')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(image, 0, 0)
+    return canvas.toDataURL('image/png')
+  } catch (err) {
+    console.warn('标准化输入图片失败，保留原图', err)
+    return dataUrl
+  }
+}
+
 export async function canvasToBlob(canvas: HTMLCanvasElement, type = 'image/png', quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
