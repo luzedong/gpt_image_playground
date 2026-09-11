@@ -993,8 +993,16 @@ async function callAgentUpstream(input, instructions, tools, onTextDelta, onReas
   const baseUrl = (process.env.CHAT_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
   const apiKey = process.env.CHAT_API_KEY || process.env.API_KEY || ''
   const model = process.env.CHAT_MODEL || 'gpt-5.6-luna'
+  const reasoningEffort = (process.env.CHAT_REASONING_EFFORT || '').trim()
   if (!baseUrl || !apiKey) throw new Error('服务端聊天 API 配置不完整')
-  const body = JSON.stringify({ model, instructions, input, tools, stream: true })
+  const body = JSON.stringify({
+    model,
+    instructions,
+    input,
+    tools,
+    stream: true,
+    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+  })
   let lastError
   for (let attempt = 0; attempt < UPSTREAM_RETRY_ATTEMPTS; attempt += 1) {
     try {

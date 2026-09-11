@@ -231,3 +231,9 @@
 - 失败资产检查发现参考图是标准 1024×1024 8-bit RGB PNG，但仍包含 `caBX` PNG chunk（C2PA 元数据）。
 - 受控测试确认：保留 `caBX` 时 AILink 返回 `Invalid image file or mode`；剥离 `caBX` 后同一张图返回 HTTP 200 并成功生成。
 - 服务端在上传 AIPixel/AILink 前统一剥离 PNG 的 `caBX` / `c2pa` chunk，仅移除元数据，不改图片像素、尺寸或格式。
+
+## 2026-09-12 DeepSeek 推理等级
+
+- 服务端聊天请求新增 `CHAT_REASONING_EFFORT` 支持，非空时发送 `reasoning: { effort }`。
+- 线上配置设置为 `CHAT_REASONING_EFFORT=high`。
+- DeepSeek 受控请求确认 `deepseek-flash` 接受 `effort: high`，响应报告 `reasoning.effort = high`。
