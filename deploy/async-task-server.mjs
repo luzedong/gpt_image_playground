@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
+import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 
 const DATA_DIR = process.env.ASYNC_TASK_DATA_DIR || '/var/lib/gpt-image-playground/tasks'
 const MAX_BODY_BYTES = 600 * 1024 * 1024
@@ -12,7 +13,24 @@ const MAX_1K_PIXELS = 1_572_864
 const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const UPSTREAM_RETRY_ATTEMPTS = 3
+const UPSTREAM_PROXY_URL = (process.env.UPSTREAM_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '').trim()
 const AGENT_CAPTION_INSTRUCTION = 'Image generation is complete. Write a concise final response for the user without calling any tools.'
+
+if (UPSTREAM_PROXY_URL) {
+  setGlobalDispatcher(new EnvHttpProxyAgent({
+    httpProxy: UPSTREAM_PROXY_URL,
+    httpsProxy: UPSTREAM_PROXY_URL,
+    noProxy: process.env.NO_PROXY || '127.0.0.1,localhost,::1',
+  }))
+  let proxyHost = 'configured'
+  try {
+    proxyHost = new URL(UPSTREAM_PROXY_URL).host
+  } catch {
+    // 启动日志只输出可确认的代理主机，避免暴露可能存在的认证信息。
+  }
+  console.log(JSON.stringify({ type: 'upstream_proxy', enabled: true, host: proxyHost }))
+}
+
 const activeTasks = new Set()
 const pendingTasks = []
 const agentTaskCreationLocks = new Map()

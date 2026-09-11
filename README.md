@@ -341,6 +341,7 @@ npm run deploy:cf
 | `ENABLE_API_PROXY=true` | 开启 Nginx 同源代理，请求发往 `/api-proxy/{路径}` 再转发到 `API_PROXY_URL` |
 | `API_PROXY_URL` | 非固定模式的代理转发目标；固定模式由 `CHAT_API_URL`、`IMAGE_1K_API_URL`、`IMAGE_4K_API_URL` 分别决定 |
 | `API_CONFIG_FILE` | 服务端配置文件路径，默认 `/etc/gpt-image-playground/api-config.env` |
+| `UPSTREAM_PROXY_URL` | 服务端出站请求代理，例如 `http://172.17.0.1:7890`；留空时直连 |
 | `API_KEY` | 服务端固定模式的统一 Key 兜底值，不会下发到浏览器 |
 | `CHAT_API_KEY` / `IMAGE_1K_API_KEY` / `IMAGE_4K_API_KEY` | 服务端固定模式的分路 Key；未填写时使用 `API_KEY` |
 | `ASYNC_TASK_DATA_DIR` | 服务端异步任务数据目录，默认 `/var/lib/gpt-image-playground/tasks` |

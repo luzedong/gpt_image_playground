@@ -27,6 +27,7 @@ FROM nginx:alpine
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /usr/lib/libgcc_s.so.1 /usr/lib/libgcc_s.so.1
 COPY --from=build /usr/lib/libstdc++.so.6 /usr/lib/libstdc++.so.6
+COPY --from=build /app/node_modules/undici /opt/gpt-image-playground/node_modules/undici
 
 ENV HOST=0.0.0.0
 ENV PORT=80
