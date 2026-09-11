@@ -45,7 +45,7 @@ export async function normalizeImageDataUrlForApi(dataUrl: string): Promise<stri
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(image, 0, 0)
-    return canvas.toDataURL('image/png')
+    return canvas.toDataURL('image/jpeg', 0.95)
   } catch (err) {
     console.warn('标准化输入图片失败，保留原图', err)
     return dataUrl

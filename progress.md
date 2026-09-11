@@ -243,3 +243,10 @@
 - 将 Agent system prompt、工具策略、数学格式说明，以及 `generate_image`、`generate_image_batch`、`continue_generation` 的工具描述等价翻译为中文。
 - 保留所有工具名、XML 标签、参数名和 `Generate at ... resolution.` 这个固定英文前缀，避免改变既有接口语义。
 - 同步更新相关测试断言，本地验证通过：`node --check`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。
+
+## 2026-09-12 参考图统一 JPEG 95
+
+- 参考图预处理由白底 8-bit RGB PNG 改为白底、保持原尺寸的 JPEG 质量 95。
+- mask 文件仍保持 PNG，不参与 JPEG 转换。
+- 目标是避免历史生成图以 2048×2048、10MB 级 PNG 反复发送到图像 API。
+- 本地验证通过：`node --check`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。
