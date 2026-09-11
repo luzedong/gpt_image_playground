@@ -6,6 +6,7 @@ import {
   getAgentCurrentReferenceId,
   getAgentGeneratedImageReferenceId,
   replaceAgentPromptImageReferencesForApi,
+  resolveAgentPromptImageReferences,
 } from './agentImageReferences'
 import { getAgentRoundResponseOutput, sanitizeResponseOutputForInput } from './agentResponseState'
 
@@ -36,8 +37,10 @@ async function createUserInputItem(
   message: AgentMessage,
   tasks: TaskRecord[],
   loadImage: LoadImage,
+  allowedImageIds: Set<string>,
 ) {
-  const imageDataUrls = await Promise.all(round.inputImageIds.map((id) => loadImage(id)))
+  const includedImageIds = round.inputImageIds.filter((id) => allowedImageIds.has(id))
+  const imageDataUrls = await Promise.all(includedImageIds.map((id) => loadImage(id)))
   if (round.maskImageId && round.maskTargetImageId) {
     const maskDataUrl = await loadImage(round.maskImageId)
     const targetIndex = round.inputImageIds.indexOf(round.maskTargetImageId)
@@ -52,8 +55,8 @@ async function createUserInputItem(
   }
   const rounds = getAgentRoundPath(conversation, round.id)
   const text = replaceAgentPromptImageReferencesForApi(message.content, round, rounds, tasks)
-  const referenceText = round.inputImageIds.length > 0
-    ? `\n\n<available_refs>${round.inputImageIds.map((_, index) => `\n  <ref id="${getAgentCurrentReferenceId(round, index)}" />`).join('')}\n</available_refs>`
+  const referenceText = includedImageIds.length > 0
+    ? `\n\n<available_refs>${includedImageIds.map((_, index) => `\n  <ref id="${getAgentCurrentReferenceId(round, index)}" />`).join('')}\n</available_refs>`
     : ''
   return {
     role: 'user',
@@ -82,7 +85,12 @@ function createGeneratedImageReferencePart(round: AgentRound, task: TaskRecord, 
   }
 }
 
-async function createGeneratedImagesInputItem(round: AgentRound, tasks: TaskRecord[], loadImage: LoadImage) {
+async function createGeneratedImagesInputItem(
+  round: AgentRound,
+  tasks: TaskRecord[],
+  loadImage: LoadImage,
+  allowedImageIds: Set<string>,
+) {
   const content: Array<{ type: string; text?: string; image_url?: string }> = []
   let imageIndex = 0
   for (const taskId of round.outputTaskIds) {
@@ -93,8 +101,10 @@ async function createGeneratedImagesInputItem(round: AgentRound, tasks: TaskReco
       continue
     }
     for (const imageId of task.outputImages) {
-      const dataUrl = await loadImage(imageId)
-      if (dataUrl) content.push({ type: 'input_image', image_url: dataUrl })
+      if (allowedImageIds.has(imageId)) {
+        const dataUrl = await loadImage(imageId)
+        if (dataUrl) content.push({ type: 'input_image', image_url: dataUrl })
+      }
       content.push(createGeneratedImageReferencePart(round, task, imageIndex))
       imageIndex += 1
     }
@@ -135,12 +145,29 @@ function createAssistantFallbackItem(text: string) {
 export async function buildAgentApiInput(options: BuildAgentApiInputOptions): Promise<unknown[]> {
   const input: unknown[] = []
   const rounds = getAgentRoundPath(options.conversation, options.currentRound.id)
+  const currentRoundIndex = rounds.findIndex((round) => round.id === options.currentRound.id)
+  const previousRound = currentRoundIndex > 0 ? rounds[currentRoundIndex - 1] : null
+  const currentUserMessage = options.conversation.messages.find(
+    (message) => message.id === options.currentRound.userMessageId,
+  )
+  const allowedImageIds = new Set<string>([
+    ...options.currentRound.inputImageIds,
+    ...(previousRound ? collectAgentRoundOutputImageSlots(previousRound, options.tasks).filter((id): id is string => Boolean(id)) : []),
+    ...resolveAgentPromptImageReferences(currentUserMessage?.content ?? '', rounds, options.tasks),
+  ])
 
   for (const round of rounds) {
     const userMessage = options.conversation.messages.find((message) => message.id === round.userMessageId)
     if (!userMessage) continue
 
-    input.push(await createUserInputItem(options.conversation, round, userMessage, options.tasks, options.loadImage))
+    input.push(await createUserInputItem(
+      options.conversation,
+      round,
+      userMessage,
+      options.tasks,
+      options.loadImage,
+      allowedImageIds,
+    ))
     if (round.id === options.currentRound.id) continue
 
     const output = getAgentRoundResponseOutput(round, options.tasks)
@@ -162,7 +189,7 @@ export async function buildAgentApiInput(options: BuildAgentApiInputOptions): Pr
     }
 
     if (round.outputTaskIds.length > 0) {
-      const imagesItem = await createGeneratedImagesInputItem(round, options.tasks, options.loadImage)
+      const imagesItem = await createGeneratedImagesInputItem(round, options.tasks, options.loadImage, allowedImageIds)
       if (imagesItem) input.push(imagesItem)
     }
   }

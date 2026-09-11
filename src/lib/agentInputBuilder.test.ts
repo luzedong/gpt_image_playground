@@ -423,4 +423,37 @@ describe('agent input builder', () => {
     expect(input[input.length - 2]).toEqual(functionOutput)
     expect(JSON.stringify(input[input.length - 1])).toContain('Tool-call budget: 2/2 used.')
   })
+
+  it('keeps current user images and only the previous round generated image', async () => {
+    const firstRound = round('round-1', 1, { userMessageId: 'user-round-1', inputImageIds: ['user-old'], outputTaskIds: ['task-1'] })
+    const previousRound = round('round-2', 2, { userMessageId: 'user-round-2', inputImageIds: ['user-previous'], outputTaskIds: ['task-2'] })
+    const currentRound = round('round-3', 3, { userMessageId: 'user-round-3', inputImageIds: ['user-current'] })
+    const conv = conversation(
+      [firstRound, previousRound, currentRound],
+      [
+        message(firstRound, 'first'),
+        message(previousRound, 'second'),
+        message(currentRound, 'third'),
+      ],
+    )
+    const loaded: string[] = []
+
+    await buildAgentApiInput({
+      conversation: conv,
+      currentRound,
+      tasks: [
+        task('task-1', { outputImages: ['old-image'] }),
+        task('task-2', { outputImages: ['previous-image'] }),
+      ],
+      loadImage: async (id) => {
+        loaded.push(id)
+        return `data:image/png;base64,${id}`
+      },
+    })
+
+    expect(loaded).toEqual(expect.arrayContaining(['user-current', 'previous-image']))
+    expect(loaded).not.toContain('old-image')
+    expect(loaded).not.toContain('user-old')
+    expect(loaded).not.toContain('user-previous')
+  })
 })
