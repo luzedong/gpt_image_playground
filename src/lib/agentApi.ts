@@ -34,37 +34,37 @@ export interface AgentApiResult {
 }
 
 const AGENT_IMAGE_INSTRUCTIONS = [
-  'You are an image-generation assistant in a multi-turn gallery app.',
+  '你是一个多轮图库应用中的图像生成助手。',
   '',
-  '## Progressive Batch Generation',
-  'For multi-image requests, use a progressive batching strategy to ensure consistency:',
-  '  1. **Base Reference First:** If the images need to share a consistent style, character, or layout (e.g. PPT slides, storyboards), generate ONE primary image first to establish the visual baseline, then call continue_generation to get another round.',
-  '  2. **Batch Remaining Tasks:** Once the base reference is available, list all remaining images to be generated. The app will generate them concurrently for you. In your descriptions, explicitly instruct to reference the base image to maintain consistency.',
-  '  3. **Independent Images:** If the requested images are completely independent (e.g. "3 different cats"), generate them together in ONE response. Do NOT generate them one by one across multiple responses.',
-  'As the turn continues, output a brief progress note before each tool call.',
-  'For single-image requests, generate directly without any listing.',
+  '## 渐进式批量生成',
+  '当用户请求多张图片时，采用渐进式批量策略保证一致性：',
+  '  1. **先生成基准图：** 如果图片需要保持一致风格、角色或版式（例如 PPT 页面、故事板），先生成一张主图建立视觉基准，然后调用 continue_generation 进入下一轮。',
+  '  2. **批量生成剩余图片：** 基准图可用后，再列出所有剩余图片。应用会为你并发生成。在描述中明确要求引用基准图以保持一致性。',
+  '  3. **独立图片：** 如果请求的图片彼此完全独立（例如“3 只不同的猫”），应在一次回复中一起生成。不要把独立图片拆到多轮逐张生成。',
+  '随着本轮推进，在每次工具调用前输出一句简短进度说明。',
+  '单图请求直接生成，不需要列清单。',
   '',
-  '## Generating images',
-  '- One image_generation call per distinct image. Never collage.',
-  '- Dependent images (a later image needs to reference an earlier one) → generate the prerequisite first, then call continue_generation. The next round will have the result available as `<ref id="..." />`.',
-  '- Only generate when explicitly requested; otherwise reply with text.',
-  '- Preserve the user\'s original intent faithfully. Never substitute requested subjects for copyright/trademark reasons.',
+  '## 生成图片',
+  '- 每张不同图片调用一次 image_generation，不要把多张图片拼成拼图。',
+  '- 有依赖关系的图片（后续图片需要引用前一张图）→ 先生成前置图片，再调用 continue_generation。下一轮会通过 `<ref id="..." />` 提供结果。',
+  '- 只有用户明确要求生成图片时才生成；否则用文字回复。',
+  '- 忠实保留用户原始意图。不要因为版权或商标原因擅自替换用户要求的主题。',
   '',
-  '## Reference tags and generated images in context',
-  'NEVER output `<ref>`, `<available_refs>`, `<removed_ref>`, or any XML reference tags in visible assistant text — the system injects them automatically and your raw output will be shown directly to the user.',
-  '- Previously generated images are represented by a `<ref id="round-N-image-M" prompt="..." />` tag; the app resolves the tag to the actual image when it is referenced by a later image-generation prompt.',
-  '- Deleted images appear as `<removed_ref id="..." />` without an accompanying image — do not reference them.',
-  '- In user messages: `<ref id="..." />` may also point to user-attached/cited images.',
-  '- In generate_image_batch tool arguments, include matching `<ref id="..." />` tags inside each image prompt when the prompt refers to a reference image. Do not use separate bare reference ids.',
-  'Resolve user mentions ("the first image") to the matching id. Only use existing ids in image_generation prompts and generate_image_batch prompts.',
+  '## 引用标签与上下文中的生成图',
+  '绝不要在可见的助手文本中输出 `<ref>`、`<available_refs>`、`<removed_ref>` 或任何 XML 引用标签。系统会自动注入这些标签，你的原始输出会直接展示给用户。',
+  '- 之前生成的图片用 `<ref id="round-N-image-M" prompt="..." />` 标签表示；当后续图像生成提示词引用该标签时，应用会把标签解析为实际图片。',
+  '- 已删除的图片会显示为 `<removed_ref id="..." />`，且没有对应图片，不要引用它们。',
+  '- 在用户消息中，`<ref id="..." />` 也可能指向用户附加或引用的图片。',
+  '- 在 generate_image_batch 的工具参数中，如果某个图像提示词引用了已有图片，请在其中加入匹配的 `<ref id="..." />` 标签。不要只使用裸引用 ID。',
+  '把用户提到的“第一张图”等表述解析为匹配的 ID。只能使用图像生成提示词和 generate_image_batch 提示词中已存在的 ID。',
 ].join('\n')
 
 const AGENT_MATH_FORMATTING_INSTRUCTIONS = [
-  '## Math formatting',
-  '- When a response contains mathematical formulas, output them using Markdown math delimiters supported by this app.',
-  '- Use `$...$` for inline formulas.',
-  '- Use block math with opening and closing `$$` on their own lines for display formulas.',
-  '- Do not use LaTeX delimiters like `\\(...\\)` or `\\[...\\]` in visible assistant text.',
+  '## 数学公式格式',
+  '- 当回复包含数学公式时，使用本应用支持的 Markdown 数学分隔符输出。',
+  '- 行内公式使用 `$...$`。',
+  '- 展示公式使用 `$$` 独占一行作为开始和结束。',
+  '- 不要在可见助手文本中使用 LaTeX 分隔符，例如 `\\(...\\)` 或 `\\[...\\]`。',
 ].join('\n')
 
 export function createAgentInstructions(settings: AppSettings, codexCliSize?: string) {
@@ -72,24 +72,24 @@ export function createAgentInstructions(settings: AppSettings, codexCliSize?: st
     ? Math.max(1, Math.trunc(settings.agentMaxToolRounds))
     : DEFAULT_AGENT_MAX_TOOL_ROUNDS
   const imageToolInstruction = settings.agentApiConfigMode === 'hybrid'
-    ? 'Use generate_image for single-image requests and generate_image_batch for concurrent multi-image requests. The built-in image_generation tool is not available in this session.'
-    : 'Use image_generation for single-image requests and generate_image_batch for concurrent multi-image requests.'
+    ? '单图请求使用 generate_image，多图并发请求使用 generate_image_batch。本次会话不提供内置 image_generation 工具。'
+    : '单图请求使用 image_generation，多图并发请求使用 generate_image_batch。'
   const imageInstructions = settings.agentApiConfigMode === 'hybrid'
     ? AGENT_IMAGE_INSTRUCTIONS.replace(/image_generation/g, 'generate_image')
     : AGENT_IMAGE_INSTRUCTIONS
   const instructions = [
     imageInstructions,
     '',
-    '## Tool policy',
-    `- Current maximum tool-use rounds for this Agent turn: ${maxToolRounds}.`,
+    '## 工具策略',
+    `- 本次 Agent 轮次最多可使用工具轮数：${maxToolRounds}。`,
     `- ${imageToolInstruction}`,
-    '- Call continue_generation ONLY when you have generated a prerequisite image and need another round to generate dependent images. Do NOT call it when the task is complete.',
-    '- When web_search is available, use it only when current external information would improve the answer or the user asks for research/news/facts.',
-    '- When the requested task is complete, stop calling tools and provide the final response.',
+    '- 只有在你已经生成前置图片、并且还需要生成依赖图片时才调用 continue_generation。任务完成后不要调用它。',
+    '- 当 web_search 可用时，只在最新外部信息有助于回答，或用户要求研究/新闻/事实时使用。',
+    '- 当用户请求的任务完成后，停止调用工具并提供最终回复。',
   ]
 
   if (codexCliSize && codexCliSize !== 'auto') {
-    instructions.push('', `- Start every image prompt with exactly "Generate at ${codexCliSize} resolution." followed by a space.`)
+    instructions.push('', `- 每个图像提示词必须以 "Generate at ${codexCliSize} resolution." 开头，后面跟一个空格。`)
   }
 
   if (settings.agentMathFormattingPrompt) instructions.push('', AGENT_MATH_FORMATTING_INSTRUCTIONS)
@@ -150,20 +150,20 @@ function createGenerateImageFunctionTool() {
     type: 'function',
     name: 'generate_image',
     description: [
-      'Generate one image through the app image API. Use this for single-image requests or prerequisite/base images that later images must reference.',
-      'The prompt must be self-contained and include full visual style descriptions.',
-      'If it refers to an existing image, include the corresponding XML tag, e.g. <ref id="round-1-image-1" />, inside the prompt so the app can attach the reference image automatically.',
+      '通过应用图像 API 生成一张图片。用于单图请求，或供后续图片引用的前置/基准图。',
+      '提示词必须自包含，并包含完整的视觉风格描述。',
+      '如果提示词引用已有图片，请在提示词中加入对应 XML 标签，例如 <ref id="round-1-image-1" />，应用会自动附加参考图。',
     ].join(' '),
     parameters: {
       type: 'object',
       properties: {
         id: {
           type: 'string',
-          description: 'Short stable identifier for this image, e.g. "cover", "base_character", "scene_1".',
+          description: '用于标识图片的简短稳定 ID，例如 "cover"、"base_character"、"scene_1"。',
         },
         prompt: {
           type: 'string',
-          description: 'Complete image generation prompt with all visual details. Include matching XML ref tags when referring to existing images.',
+          description: '包含完整视觉细节的图像生成提示词。引用已有图片时请加入匹配的 XML 标签。',
         },
       },
       required: ['id', 'prompt'],
@@ -178,37 +178,37 @@ function createAgentTools(params: TaskParams, profile: ApiProfile, settings: App
     ? [createGenerateImageFunctionTool()]
     : [createImageTool(params, profile, maskDataUrl)]
   const singleImageToolInstruction = settings.agentApiConfigMode === 'hybrid'
-    ? 'For single images or prerequisite/base images, use the generate_image tool instead.'
-    : 'For single images or prerequisite/base images, use the built-in image_generation tool instead.'
+    ? '单图或前置/基准图请使用 generate_image 工具。'
+    : '单图或前置/基准图请使用内置 image_generation 工具。'
 
   // generate_image_batch: custom function tool for concurrent multi-image generation
   tools.push({
     type: 'function',
     name: 'generate_image_batch',
     description: [
-      'Generate multiple images concurrently. Use this ONLY when:',
-      '1. There are 2+ remaining images whose prerequisites (base references) are ALL already generated.',
-      '2. These images are independent of each other (none references another image in this same batch).',
+      '并发生成多张图片。仅在满足以下条件时使用：',
+      '1. 还有至少 2 张图片，且它们依赖的前置/基准图都已生成。',
+      '2. 这些图片彼此独立，没有图片引用同一批次中的另一张图片。',
       singleImageToolInstruction,
-      'Each image prompt must be self-contained and include full visual style descriptions.',
-      'If an image needs to match a previously generated image, include the corresponding XML tag (e.g. <ref id="round-1-image-1" />) inside that image prompt so the app can attach the reference image automatically.',
+      '每个图像提示词必须自包含，并包含完整的视觉风格描述。',
+      '如果图片需要匹配之前生成的图片，请在该图像提示词中加入对应 XML 标签，例如 <ref id="round-1-image-1" />，应用会自动附加参考图。',
     ].join(' '),
     parameters: {
       type: 'object',
       properties: {
         images: {
           type: 'array',
-          description: 'Array of images to generate concurrently.',
+          description: '需要并发生成的图片数组。',
           items: {
             type: 'object',
             properties: {
               id: {
                 type: 'string',
-                description: 'Short stable identifier for this image, e.g. "slide_2_problem", "scene_3".',
+                description: '用于标识图片的简短稳定 ID，例如 "slide_2_problem"、"scene_3"。',
               },
               prompt: {
                 type: 'string',
-                description: 'Complete image generation prompt with all visual details. If it refers to a previous image, include the matching XML tag, e.g. <ref id="round-1-image-1" />.',
+                description: '包含完整视觉细节的图像生成提示词。如果引用之前的图片，请加入匹配的 XML 标签，例如 <ref id="round-1-image-1" />。',
               },
             },
             required: ['id', 'prompt'],
@@ -227,16 +227,16 @@ function createAgentTools(params: TaskParams, profile: ApiProfile, settings: App
     type: 'function',
     name: 'continue_generation',
     description: [
-      'Request another round to continue generating images.',
-      'Call this ONLY when you have just generated a prerequisite/base image and still need to generate dependent images that reference it.',
-      'Do NOT call this when the task is already complete.',
+      '请求进入下一轮继续生成图片。',
+      '只有在你刚生成前置/基准图，并且还需要生成引用它的依赖图片时才调用。',
+      '任务已经完成时不要调用。',
     ].join(' '),
     parameters: {
       type: 'object',
       properties: {
         reason: {
           type: 'string',
-          description: 'Brief explanation of why another round is needed and what will be generated next.',
+          description: '简短说明为什么需要下一轮，以及下一轮将生成什么。',
         },
       },
       required: ['reason'],

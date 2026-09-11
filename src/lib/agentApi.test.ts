@@ -179,7 +179,7 @@ describe('callAgentResponsesApi', () => {
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
     expect(body.tools[0].size).toBeUndefined()
-    expect(body.instructions).toContain('Start every image prompt with exactly "Generate at 1024x1024 resolution." followed by a space.')
+    expect(body.instructions).toContain('- 每个图像提示词必须以 "Generate at 1024x1024 resolution." 开头，后面跟一个空格。')
   })
 
   it('extracts image_generation results from base64 object fields', async () => {
@@ -356,8 +356,8 @@ describe('callAgentResponsesApi', () => {
     })
 
     let body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
-    expect(body.instructions).toContain('## Math formatting')
-    expect(body.instructions).toContain('Use `$...$` for inline formulas.')
+    expect(body.instructions).toContain('## 数学公式格式')
+    expect(body.instructions).toContain('行内公式使用 `$...$`。')
 
     await callAgentResponsesApi({
       settings: { ...DEFAULT_SETTINGS, agentMathFormattingPrompt: false },
@@ -367,7 +367,7 @@ describe('callAgentResponsesApi', () => {
     })
 
     body = JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))
-    expect(body.instructions).not.toContain('## Math formatting')
+    expect(body.instructions).not.toContain('## 数学公式格式')
   })
 
   it("does not duplicate the assistant message item when response.completed lacks an item id", async () => {

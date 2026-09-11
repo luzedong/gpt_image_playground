@@ -14,7 +14,7 @@ const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const UPSTREAM_RETRY_ATTEMPTS = 3
 const UPSTREAM_PROXY_URL = (process.env.UPSTREAM_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '').trim()
-const AGENT_CAPTION_INSTRUCTION = 'Image generation is complete. Write a concise final response for the user without calling any tools.'
+const AGENT_CAPTION_INSTRUCTION = '图片已生成。请为用户写一段简洁的最终回复，不要调用任何工具。'
 
 if (UPSTREAM_PROXY_URL) {
   setGlobalDispatcher(new EnvHttpProxyAgent({
@@ -769,7 +769,7 @@ function createAgentTools() {
     {
       type: 'function',
       name: 'generate_image',
-      description: 'Generate one image through the app image API. Include XML ref tags inside the prompt when an existing image is required.',
+      description: '通过应用图像 API 生成一张图片。当提示词需要引用已有图片时，请在提示词中加入 XML 引用标签。',
       parameters: {
         type: 'object',
         properties: {
@@ -784,7 +784,7 @@ function createAgentTools() {
     {
       type: 'function',
       name: 'generate_image_batch',
-      description: 'Generate multiple independent images concurrently. Include XML ref tags inside prompts when needed.',
+      description: '并发生成多张相互独立的图片。需要时请在提示词中加入 XML 引用标签。',
       parameters: {
         type: 'object',
         properties: {
@@ -809,7 +809,7 @@ function createAgentTools() {
     {
       type: 'function',
       name: 'continue_generation',
-      description: 'Request another round only after a prerequisite image was generated and dependent images remain.',
+      description: '仅在前置图片已生成且仍有依赖图片需要生成时，请求进入下一轮。',
       parameters: {
         type: 'object',
         properties: { reason: { type: 'string' } },

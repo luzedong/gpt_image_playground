@@ -237,3 +237,9 @@
 - 服务端聊天请求新增 `CHAT_REASONING_EFFORT` 支持，非空时发送 `reasoning: { effort }`。
 - 线上配置设置为 `CHAT_REASONING_EFFORT=high`。
 - DeepSeek 受控请求确认 `deepseek-flash` 接受 `effort: high`，响应报告 `reasoning.effort = high`。
+
+## 2026-09-12 Agent 提示词中文化
+
+- 将 Agent system prompt、工具策略、数学格式说明，以及 `generate_image`、`generate_image_batch`、`continue_generation` 的工具描述等价翻译为中文。
+- 保留所有工具名、XML 标签、参数名和 `Generate at ... resolution.` 这个固定英文前缀，避免改变既有接口语义。
+- 同步更新相关测试断言，本地验证通过：`node --check`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。
