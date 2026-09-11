@@ -40,6 +40,7 @@ describe('server managed image API', () => {
       prompt: '一只猫',
       params: DEFAULT_PARAMS,
       inputImageDataUrls: [],
+      clientTaskId: 'client-task-1',
       onServerTaskEnqueued: enqueued,
     }, profile)
 
@@ -53,6 +54,7 @@ describe('server managed image API', () => {
       inputImages: [],
       profileId: 'default-openai',
       model: 'gpt-image-2',
+      client_task_id: 'client-task-1',
     })
   })
 

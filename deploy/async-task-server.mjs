@@ -34,6 +34,7 @@ if (UPSTREAM_PROXY_URL) {
 const activeTasks = new Set()
 const pendingTasks = []
 const agentTaskCreationLocks = new Map()
+const imageTaskCreationLocks = new Map()
 const agentEventClients = new Map()
 const upstreamLocks = new Map()
 const AGENT_IMAGE_DIR = join(DATA_DIR, 'agent-images')
@@ -412,6 +413,14 @@ function normalizeImageModel(value) {
   return model
 }
 
+function normalizeClientTaskId(value) {
+  if (value == null || value === '') return ''
+  if (typeof value !== 'string') throw new Error('客户端任务 ID 无效')
+  const taskId = value.trim()
+  if (!/^[A-Za-z0-9_-]{8,160}$/.test(taskId)) throw new Error('客户端任务 ID 无效')
+  return taskId
+}
+
 function normalizeTaskInput(input) {
   if (!input || typeof input !== 'object') throw new Error('任务格式无效')
   const body = input
@@ -430,6 +439,7 @@ function normalizeTaskInput(input) {
     params,
     profileId: body.profileId === 'default-ailink-image' ? 'default-ailink-image' : 'default-openai',
     model: normalizeImageModel(body.model),
+    clientTaskId: normalizeClientTaskId(body.client_task_id),
     inputImages,
     maskDataUrl,
     nativeTransparentBackground: body.nativeTransparentBackground === true,
@@ -1521,23 +1531,47 @@ async function restoreTasks() {
 async function handleCreate(req, res) {
   try {
     const body = normalizeTaskInput(JSON.parse(await readRequestBody(req)))
-    const task = {
-      id: randomUUID(),
-      status: 'queued',
-      prompt: body.prompt,
-      params: body.params,
-      profileId: body.profileId,
-      model: body.model,
-      inputImages: body.inputImages,
-      maskDataUrl: body.maskDataUrl,
-      nativeTransparentBackground: body.nativeTransparentBackground,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      error: null,
+    const createTask = async () => {
+      if (body.clientTaskId) {
+        const existing = await loadTask(body.clientTaskId)
+        if (existing) {
+          if (existing.kind === 'agent') throw new Error('客户端任务 ID 已被占用')
+          return existing
+        }
+      }
+      const task = {
+        id: body.clientTaskId || randomUUID(),
+        status: 'queued',
+        prompt: body.prompt,
+        params: body.params,
+        profileId: body.profileId,
+        model: body.model,
+        inputImages: body.inputImages,
+        maskDataUrl: body.maskDataUrl,
+        nativeTransparentBackground: body.nativeTransparentBackground,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        error: null,
+      }
+      await saveTask(task)
+      pendingTasks.push(task)
+      pumpQueue()
+      return task
     }
-    await saveTask(task)
-    pendingTasks.push(task)
-    pumpQueue()
+    const task = body.clientTaskId
+      ? await (() => {
+          let creation = imageTaskCreationLocks.get(body.clientTaskId)
+          if (!creation) {
+            creation = createTask().finally(() => {
+              if (imageTaskCreationLocks.get(body.clientTaskId) === creation) {
+                imageTaskCreationLocks.delete(body.clientTaskId)
+              }
+            })
+            imageTaskCreationLocks.set(body.clientTaskId, creation)
+          }
+          return creation
+        })()
+      : await createTask()
     json(res, 202, { task_id: task.id, status: task.status })
   } catch (error) {
     json(res, 400, { error: { message: error instanceof Error ? error.message : String(error) } })

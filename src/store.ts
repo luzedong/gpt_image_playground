@@ -81,6 +81,8 @@ const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const serverRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const openAIWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const activeTaskExecutions = new Set<string>()
+let gallerySubmissionInFlight = false
+const galleryRetryInFlight = new Set<string>()
 let pageLifecycleEnding = false
 let pageLifecycleGeneration = 0
 const agentRoundControllers = new Map<string, AbortController>()
@@ -1768,6 +1770,16 @@ export async function initStore() {
 
 /** 提交新任务 */
 export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
+  if (gallerySubmissionInFlight) return
+  gallerySubmissionInFlight = true
+  try {
+    await submitTaskInternal(options)
+  } finally {
+    gallerySubmissionInFlight = false
+  }
+}
+
+async function submitTaskInternal(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
   const { settings, prompt, inputImages, maskDraft, params, reusedTaskApiProfileId, reusedTaskApiProfileName, reusedTaskApiProfileMissing, showToast, setConfirmDialog } =
     useStore.getState()
 
@@ -4322,6 +4334,7 @@ async function executeTask(taskId: string, options: { resumed?: boolean } = {}) 
           customRecoverable: false,
         })
       },
+      clientTaskId: taskId,
       serverTaskId: task.serverTaskId,
       onServerTaskEnqueued: async (request) => {
         clearOpenAIWatchdogTimer(taskId)
@@ -4588,6 +4601,16 @@ export async function deleteFavoriteCollection(collectionId: string, deleteTasks
 
 /** 重试失败的任务：创建新任务并执行 */
 export async function retryTask(task: TaskRecord) {
+  if (galleryRetryInFlight.has(task.id)) return
+  galleryRetryInFlight.add(task.id)
+  try {
+    await retryTaskInternal(task)
+  } finally {
+    galleryRetryInFlight.delete(task.id)
+  }
+}
+
+async function retryTaskInternal(task: TaskRecord) {
   const { settings } = useStore.getState()
   const activeProfile = getActiveApiProfile(settings)
   const normalizedParams = normalizeParamsForSettings(task.params, settings, { hasInputImages: task.inputImageIds.length > 0 })

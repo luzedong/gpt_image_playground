@@ -54,6 +54,7 @@ export async function callServerManagedImageApi(opts: CallApiOptions, profile: A
         maskDataUrl: opts.maskDataUrl,
         profileId: profile.id,
         model: profile.model,
+        client_task_id: opts.clientTaskId,
       }),
     })
     const payload = await readResponse(response)

@@ -1,4 +1,5 @@
 import type { AgentConversation, AgentMessage, AgentRound, ResponsesOutputItem, TaskRecord } from '../types'
+import { createMaskPreviewDataUrl } from './canvasImage'
 import { getAgentRoundPath } from './agentConversationState'
 import {
   collectAgentRoundOutputImageSlots,
@@ -36,10 +37,18 @@ async function createUserInputItem(
   tasks: TaskRecord[],
   loadImage: LoadImage,
 ) {
-  const imageDataUrls: string[] = []
-  for (const id of round.inputImageIds) {
-    const dataUrl = await loadImage(id)
-    if (dataUrl) imageDataUrls.push(dataUrl)
+  const imageDataUrls = await Promise.all(round.inputImageIds.map((id) => loadImage(id)))
+  if (round.maskImageId && round.maskTargetImageId) {
+    const maskDataUrl = await loadImage(round.maskImageId)
+    const targetIndex = round.inputImageIds.indexOf(round.maskTargetImageId)
+    const targetDataUrl = targetIndex >= 0 ? imageDataUrls[targetIndex] : null
+    if (maskDataUrl && targetDataUrl) {
+      try {
+        imageDataUrls[targetIndex] = await createMaskPreviewDataUrl(targetDataUrl, maskDataUrl)
+      } catch (err) {
+        console.warn('生成 Agent 遮罩叠加图失败，使用原图', err)
+      }
+    }
   }
   const rounds = getAgentRoundPath(conversation, round.id)
   const text = replaceAgentPromptImageReferencesForApi(message.content, round, rounds, tasks)
@@ -50,7 +59,7 @@ async function createUserInputItem(
     role: 'user',
     content: [
       { type: 'input_text', text: `${text}${referenceText}` },
-      ...imageDataUrls.map((dataUrl) => ({ type: 'input_image', image_url: dataUrl })),
+      ...imageDataUrls.flatMap((dataUrl) => dataUrl ? [{ type: 'input_image', image_url: dataUrl }] : []),
     ],
   }
 }
