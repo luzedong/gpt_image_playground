@@ -195,12 +195,12 @@ npm run sync:prompt-library
 
 ### Pixel API 配置
 
-当前应用已内置 Pixel API 地址 `https://ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2` 生图模型，以及默认的 `Responses API` Agent 文本模型 `gpt-5.6-luna`。两套配置自动共用同一个 Pixel API Key；首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
+当前应用已内置 Pixel API 地址 `https://ai-pixel.online/v1`、`Images API` 模式、`gpt-image-2.5-flare` 生图模型，以及默认的 `Responses API` Agent 文本模型 `gpt-5.6-luna`。两套配置自动共用同一个 Pixel API Key；首次打开若 Key 为空，会弹窗提示填写；也可以在「设置 → API 配置」中修改。
 
 - API Key 填写 Pixel 控制台创建的 Bearer Token。
 - `VITE_DEFAULT_API_KEY`（Vercel、GitHub Actions、本地构建）或 `DEFAULT_API_KEY`（Docker）可作为部署时的默认 Key；不填写则由用户在页面中输入。
 - `VITE_DEFAULT_API_URL`／`DEFAULT_API_URL` 仍可用于高级覆盖和旧部署兼容，普通 Pixel 部署无需填写。
-- Agent 默认使用同一 Pixel 地址的 `/v1/responses` 和 `gpt-5.6-luna`，图像工具继续使用 `gpt-image-2` 的 Images API；两者共用同一个 Key，并以“混合”模式自动组合。若切换到其他服务商，才需要在「设置 → Agent 配置」选择或新建对应的 Responses 文本模型配置。
+- Agent 默认使用同一 Pixel 地址的 `/v1/responses` 和 `gpt-5.6-luna`，图像工具继续使用 `gpt-image-2.5-flare` 的 Images API；两者共用同一个 Key，并以“混合”模式自动组合。若切换到其他服务商，才需要在「设置 → Agent 配置」选择或新建对应的 Responses 文本模型配置。
 
 Pixel 编辑文档定义单个 `image` 文件。画廊输入栏可以保留多张参考图；提交 Pixel 编辑请求时会按接口要求发送当前输入图，可选遮罩会以 `mask` PNG 一并上传。
 
@@ -349,7 +349,7 @@ npm run deploy:cf
 | `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
 | `HOST` / `PORT` | Nginx 监听地址和端口，默认 `0.0.0.0:80` |
 
-默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，1K/2K/4K 图像统一使用 `https://direct.linkai.pics/v1` 的 `gpt-image-2`。画廊/Studio 图像请求和 Agent 整轮（聊天、工具调用、参考图生成）均由容器后台异步执行；浏览器切换页面、刷新或暂时关闭后，重新打开会按任务 ID 继续轮询，不会因前端连接断开而把已计费的生成标记为失败。Agent 状态查询不设置浏览器侧绝对超时，移动端网络短暂中断会自动退避重试；状态和大尺寸结果分开传输，降低手机恢复时的失败概率。浏览器只访问同源接口，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
+默认 Docker 模式已启用服务端固定配置：聊天使用 `gpt-5.6-luna`，AIPixel 1K–2K 使用 `gpt-image-2.5-flare`，AILink 使用 `gpt-image-2`。画廊/Studio 图像请求和 Agent 整轮（聊天、工具调用、参考图生成）均由容器后台异步执行；浏览器切换页面、刷新或暂时关闭后，重新打开会按任务 ID 继续轮询，不会因前端连接断开而把已计费的生成标记为失败。Agent 状态查询不设置浏览器侧绝对超时，移动端网络短暂中断会自动退避重试；状态和大尺寸结果分开传输，降低手机恢复时的失败概率。浏览器只访问同源接口，不需要用户输入 API Key，真实地址和 Key 不会写入前端资源。
 
 推荐把密钥和三个上游地址写入服务器文件 `deploy/api-config.env.example` 对应的配置文件，再只读挂载到容器：
 

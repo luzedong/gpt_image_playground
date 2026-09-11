@@ -4,6 +4,7 @@ import {
   DEFAULT_FAL_BASE_URL,
   DEFAULT_FAL_MODEL,
   DEFAULT_IMAGES_MODEL,
+  DEFAULT_PIXEL_IMAGE_MODEL,
   DEFAULT_OPENAI_PROFILE_ID,
   DEFAULT_PIXEL_BASE_URL,
   DEFAULT_RESPONSES_MODEL,
@@ -70,7 +71,7 @@ describe('normalizeSettings', () => {
 
     expect(imageProfile).toMatchObject({
       baseUrl: DEFAULT_PIXEL_BASE_URL,
-      model: DEFAULT_IMAGES_MODEL,
+      model: DEFAULT_PIXEL_IMAGE_MODEL,
       apiMode: 'images',
     })
     expect(agentProfile).toMatchObject({
@@ -172,7 +173,7 @@ describe('default API URL env', () => {
     expect(DEFAULT_SETTINGS.profiles[0]).toMatchObject({
       baseUrl: DEFAULT_PIXEL_BASE_URL,
       apiKey: 'pixel-key',
-      model: DEFAULT_IMAGES_MODEL,
+      model: DEFAULT_PIXEL_IMAGE_MODEL,
       apiMode: 'images',
     })
     expect(hasDefaultPresetConfig()).toBe(true)

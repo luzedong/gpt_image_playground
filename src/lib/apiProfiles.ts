@@ -32,6 +32,7 @@ const DEFAULT_API_URL_PATCH = isServerManagedApiConfigEnabled()
   : parseDefaultApiUrl(RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : DEFAULT_PIXEL_BASE_URL))
 const DEFAULT_BASE_URL = isServerManagedApiConfigEnabled() ? '' : DEFAULT_API_URL_PATCH?.baseUrl ?? ''
 const DEFAULT_API_KEY = isServerManagedApiConfigEnabled() ? '' : DEFAULT_API_URL_PATCH?.apiKey ?? RAW_DEFAULT_API_KEY
+export const DEFAULT_PIXEL_IMAGE_MODEL = 'gpt-image-2.5-flare'
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-luna'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
@@ -393,7 +394,7 @@ export function createDefaultAgentProfile(overrides: Partial<ApiProfile> = {}): 
 }
 
 export function createDefaultPixelProfiles(): ApiProfile[] {
-  const imageProfile = createDefaultOpenAIProfile()
+  const imageProfile = createDefaultOpenAIProfile({ model: DEFAULT_API_URL_PATCH?.model ?? DEFAULT_PIXEL_IMAGE_MODEL })
   return [
     imageProfile,
     createDefaultAgentProfile({
@@ -408,6 +409,7 @@ export function createDefaultAilinkProfile(overrides: Partial<ApiProfile> = {}):
     id: DEFAULT_AILINK_PROFILE_ID,
     name: 'AILink 图像（1K–4K）',
     description: '切换后图像使用 AILink；支持 1K–4K。',
+    model: DEFAULT_IMAGES_MODEL,
     ...overrides,
   })
 }
@@ -416,6 +418,7 @@ export function createDefaultServerManagedPixelProfiles(): ApiProfile[] {
   const imageProfile = createDefaultOpenAIProfile({
     name: 'AIPixel 图像（1K–2K）',
     description: '图像默认使用 AIPixel；支持 1K–2K。',
+    model: DEFAULT_API_URL_PATCH?.model ?? DEFAULT_PIXEL_IMAGE_MODEL,
   })
   return [
     imageProfile,
@@ -708,7 +711,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   const legacyProfile = createDefaultOpenAIProfile({
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : DEFAULT_API_KEY,
-    model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_IMAGES_MODEL,
+    model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_PIXEL_IMAGE_MODEL,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : DEFAULT_API_TIMEOUT,
     apiMode: legacyApiMode,
     codexCli: Boolean(record.codexCli),
@@ -733,8 +736,12 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
       if (!existing) return profile
       return {
         ...profile,
-        // 服务端固定连接参数；模型 ID 和流式体验偏好可由浏览器单独调整。
-        model: profile.apiMode === 'images' && existing.model.trim() ? existing.model : profile.model,
+        // AIPixel 模型由服务端强制更新；AILink 模型保留浏览器配置。
+        model: profile.id === DEFAULT_OPENAI_PROFILE_ID
+          ? DEFAULT_PIXEL_IMAGE_MODEL
+          : profile.apiMode === 'images' && existing.model.trim()
+            ? existing.model
+            : profile.model,
         streamImages: existing.streamImages,
         streamPartialImages: existing.streamPartialImages,
       }
@@ -964,13 +971,17 @@ export function validateApiProfile(profile: ApiProfile): string | null {
   return null
 }
 
+function isPixelImageModel(model: string): boolean {
+  return model === DEFAULT_PIXEL_IMAGE_MODEL || model === DEFAULT_IMAGES_MODEL
+}
+
 function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
   return profile.id === DEFAULT_OPENAI_PROFILE_ID &&
     profile.name === (DEFAULT_API_URL_PATCH?.name ?? 'Pixel API') &&
     profile.provider === 'openai' &&
     profile.baseUrl === DEFAULT_BASE_URL &&
     profile.apiKey === DEFAULT_API_KEY &&
-    profile.model === DEFAULT_IMAGES_MODEL &&
+    isPixelImageModel(profile.model) &&
     profile.timeout === DEFAULT_API_TIMEOUT &&
     profile.apiMode === 'images' &&
     profile.reasoningEffort === undefined &&
@@ -990,7 +1001,7 @@ function isBuiltInPixelImageProfile(profile: ApiProfile): boolean {
   return profile.id === DEFAULT_OPENAI_PROFILE_ID &&
     profile.provider === 'openai' &&
     profile.apiMode === 'images' &&
-    profile.model === DEFAULT_IMAGES_MODEL
+    isPixelImageModel(profile.model)
 }
 
 function isLegacyAutoCreatedAgentProfile(profile: ApiProfile): boolean {
@@ -1362,7 +1373,7 @@ export function mergePresetImportedSettings(
 export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   baseUrl: DEFAULT_BASE_URL,
   apiKey: DEFAULT_API_KEY,
-  model: DEFAULT_API_URL_PATCH?.model ?? DEFAULT_IMAGES_MODEL,
+  model: DEFAULT_API_URL_PATCH?.model ?? DEFAULT_PIXEL_IMAGE_MODEL,
   timeout: DEFAULT_API_TIMEOUT,
   apiMode: DEFAULT_API_URL_PATCH?.apiMode ?? 'images',
   codexCli: DEFAULT_API_URL_PATCH?.codexCli ?? false,

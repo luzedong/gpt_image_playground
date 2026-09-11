@@ -469,7 +469,7 @@ function getUpstreamConfig(size, profileId = '', requestedModel = '') {
         || process.env.API_KEY || '',
     model: requestedModel || (isAilink
       ? (isHighResolution ? process.env.IMAGE_AILINK_4K_MODEL : process.env.IMAGE_AILINK_1K_MODEL) || 'gpt-image-2'
-      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2'),
+      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2.5-flare'),
   }
 }
 

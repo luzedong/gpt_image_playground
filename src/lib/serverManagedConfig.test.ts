@@ -5,7 +5,7 @@ describe('server-managed API configuration', () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
     vi.resetModules()
 
-    const { DEFAULT_AGENT_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, normalizeSettings, validateApiProfile } = await import('./apiProfiles')
+    const { DEFAULT_AGENT_PROFILE_ID, DEFAULT_OPENAI_PROFILE_ID, DEFAULT_PIXEL_IMAGE_MODEL, normalizeSettings, validateApiProfile } = await import('./apiProfiles')
     const settings = normalizeSettings({
       profiles: [
         {
@@ -46,7 +46,7 @@ describe('server-managed API configuration', () => {
       agentTextProfileId: DEFAULT_AGENT_PROFILE_ID,
       agentImageProfileId: DEFAULT_OPENAI_PROFILE_ID,
     })
-    expect(settings.profiles[0]).toMatchObject({ baseUrl: '', apiKey: '', model: 'custom-image-model', apiProxy: true })
+    expect(settings.profiles[0]).toMatchObject({ baseUrl: '', apiKey: '', model: DEFAULT_PIXEL_IMAGE_MODEL, apiProxy: true })
     expect(settings.profiles[0]).toMatchObject({ streamImages: true, streamPartialImages: 3 })
     expect(settings.profiles[2]).toMatchObject({ baseUrl: '', apiKey: '', model: 'gpt-5.6-luna', apiProxy: true })
     expect(validateApiProfile(settings.profiles[2])).toBeNull()
@@ -66,11 +66,11 @@ describe('server-managed API configuration', () => {
     expect(settings.profiles.find((profile) => profile.id === DEFAULT_OPENAI_PROFILE_ID)).toBeDefined()
   })
 
-  it('preserves separate user-selected image models for AIPixel and AILink', async () => {
+  it('forces the AIPixel model while preserving the AILink model', async () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
     vi.resetModules()
 
-    const { normalizeSettings } = await import('./apiProfiles')
+    const { DEFAULT_PIXEL_IMAGE_MODEL, normalizeSettings } = await import('./apiProfiles')
     const settings = normalizeSettings({
       profiles: [
         { id: 'default-openai', provider: 'openai', model: 'pixel-image-model' },
@@ -78,7 +78,7 @@ describe('server-managed API configuration', () => {
       ],
     })
 
-    expect(settings.profiles.find((profile) => profile.id === 'default-openai')?.model).toBe('pixel-image-model')
+    expect(settings.profiles.find((profile) => profile.id === 'default-openai')?.model).toBe(DEFAULT_PIXEL_IMAGE_MODEL)
     expect(settings.profiles.find((profile) => profile.id === 'default-ailink-image')?.model).toBe('ailink-image-model')
   })
 
