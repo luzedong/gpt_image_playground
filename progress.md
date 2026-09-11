@@ -141,9 +141,31 @@
 - 图片资源约 2.9 MB，公网下载约 34 秒，与已测约 0.36 MB/s 带宽一致，不是主要未知延迟。
 - 已确认 252.4 秒全部在服务端图片工具内部，且同时间无其他图像任务占用供应商锁；服务端请求缺少 `response_format: 'b64_json'`，会走 URL 结果并二次下载。
 - 已修改 `deploy/async-task-server.mjs`：生成请求固定返回 Base64，AILink 编辑请求返回 Base64，AIPixel 编辑保持兼容；增加安全耗时日志，区分响应头、响应体和图片 URL 下载。
-- 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`git diff --check`。
+- 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）、`git diff --check`。
 - 修改尚未提交、推送或部署，等待用户确认。
 - 修复提交 `66dbef7` 已推送到 `main`。
 - 服务器已拉取代码并使用 `deploy/Dockerfile` 构建镜像 `gpt-image-playground:66dbef7`；依赖层命中缓存，仅重建源码和产物层。
 - 已按原端口、启动命令、API 配置只读挂载和任务数据挂载重建线上容器。
 - 部署后容器运行正常；公网首页返回 200 且标题为“绘语”，`/api-agent-assets/check` 空列表返回 `{"missing":[]}`，容器内服务端文件确认包含 `response_format: b64_json` 逻辑。
+
+## 2026-09-10 AIPixel 传输瓶颈复查
+
+- 复查新样本 `mtviyyqe76jth`，确认前端 8m26s 中约 7 分钟发生在 AIPixel 图片响应传输：响应头等待 168.5 秒，3.77 MB Base64 响应体读取 252.0 秒。
+- 对照任务文件确认参考图 Data URL 3.85 MB、生成图 Base64 3.77 MB；上游返回 `b64_json`，无 URL 二次下载。
+- 使用非计费静态资源测速：服务器到 AIPixel 约 9–10 KB/s，到 AILink 约 251–285 KB/s，到 Cloudflare 约 744 KB/s，证明瓶颈是服务器到 AIPixel 的特定链路。
+- 本轮仅完成诊断，未修改业务代码；建议后续优先切换 AILink 承载大图编辑，或确认 AIPixel URL/WebP 支持后再优化传输格式。
+
+## 2026-09-11 新样本耗时结构复查
+
+- 复查 `mtwczd0q82q2b`：前端 2m01s，实际从创建到完成约 120.2 秒；图片工具前聊天约 13.3 秒，AIPixel 图片上游 68.8 秒，图片可见后最终聊天约 30.9 秒。
+- 该任务无参考图，`responseBodyMs` 仅 3.1 秒，说明 AIPixel 传输已恢复；图片请求完成时间 10:51:50，任务结果完成时间 10:52:21。
+- 剩余优化空间集中在两处：最终聊天仍会附加 3.99 MB 生成图 Base64，可改为文本元数据；若接受牺牲自然收尾文案，可把最终整理从任务完成条件中解耦，让图片任务在图片就绪后即结束。
+- 上游图片生成等待 65.7 秒属于 AIPixel 模型生成耗时，最近另一个同类生成样本为 119.4 秒；进一步缩短需要测试其他供应商或模型，不能仅靠本地代码优化。
+
+## 2026-09-11 最终聊天去图与文案异步化
+
+- 将 Agent 最终聊天输入从“生成图 Base64 + `<ref>`”改为仅 `<ref>` 文本；服务端 `references` 映射仍保留实际 Data URL，后续依赖生图可以继续引用原图。
+- 单次 `generate_image` 场景下，图片落盘并广播后立即结束任务，返回当前进度文案和图片；服务端启动 `captionState=pending` 的后台整理任务，最终文案再异步写入 progress/result。
+- 为减少后台文案流式更新带来的大文件写放大，新增 `saveAgentProgress`，文案增量只写 progress 文件，最终状态才写完整任务快照。
+- 前端在初始结果完成后监听 `captionState`，最终文案到达后更新 Agent 消息和响应输出，不重复存储图片。
+- 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`git diff --check`。

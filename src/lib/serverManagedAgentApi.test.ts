@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from '../types'
-import { callServerManagedAgentApi } from './serverManagedAgentApi'
+import { callServerManagedAgentApi, watchServerManagedAgentCaption } from './serverManagedAgentApi'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -78,6 +78,48 @@ describe('server managed Agent API', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api-agent-tasks')
     expect(fetchMock.mock.calls[1][0]).toBe('/api-agent-tasks/agent-task-2?meta=1')
     expect(fetchMock.mock.calls[2][0]).toBe('/api-agent-tasks/agent-task-2/result')
+  })
+
+  it('watches the detached caption and applies only the final text result', async () => {
+    const onResult = vi.fn()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-caption',
+        status: 'done',
+        progress: { captionState: 'pending' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-caption',
+        status: 'done',
+        progress: { captionState: 'done' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'agent-task-caption',
+        status: 'done',
+        captionState: 'done',
+        result: {
+          text: '最终整理完成',
+          images: [],
+          outputItems: [{ type: 'message', content: [{ type: 'output_text', text: '最终整理完成' }] }],
+        },
+      }), { status: 200 }))
+
+    const result = await watchServerManagedAgentCaption({
+      taskId: 'agent-task-caption',
+      pollIntervalMs: 0,
+      timeoutMs: 1_000,
+      onResult,
+    })
+
+    expect(result?.text).toBe('最终整理完成')
+    expect(result?.captionState).toBe('done')
+    expect(result?.images).toEqual([])
+    expect(onResult).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api-agent-tasks/agent-task-caption?meta=1',
+      '/api-agent-tasks/agent-task-caption?meta=1',
+      '/api-agent-tasks/agent-task-caption/result',
+    ])
   })
 
   it('retries transient status and result failures without a client deadline', async () => {

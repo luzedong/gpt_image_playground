@@ -30,6 +30,7 @@ export interface AgentApiResult {
   images: AgentApiResultImage[]
   outputItems: ResponsesApiResponse['output']
   rawResponsePayload?: string
+  captionState?: 'idle' | 'pending' | 'running' | 'done'
 }
 
 const AGENT_IMAGE_INSTRUCTIONS = [
@@ -51,7 +52,7 @@ const AGENT_IMAGE_INSTRUCTIONS = [
   '',
   '## Reference tags and generated images in context',
   'NEVER output `<ref>`, `<available_refs>`, `<removed_ref>`, or any XML reference tags in visible assistant text — the system injects them automatically and your raw output will be shown directly to the user.',
-  '- Previously generated images are injected as user messages containing the actual image (input_image) followed by a `<ref id="round-N-image-M" prompt="..." />` tag identifying it.',
+  '- Previously generated images are represented by a `<ref id="round-N-image-M" prompt="..." />` tag; the app resolves the tag to the actual image when it is referenced by a later image-generation prompt.',
   '- Deleted images appear as `<removed_ref id="..." />` without an accompanying image — do not reference them.',
   '- In user messages: `<ref id="..." />` may also point to user-attached/cited images.',
   '- In generate_image_batch tool arguments, include matching `<ref id="..." />` tags inside each image prompt when the prompt refers to a reference image. Do not use separate bare reference ids.',

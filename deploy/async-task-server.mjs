@@ -12,6 +12,7 @@ const MAX_1K_PIXELS = 1_572_864
 const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const UPSTREAM_RETRY_ATTEMPTS = 3
+const AGENT_CAPTION_INSTRUCTION = 'Image generation is complete. Write a concise final response for the user without calling any tools.'
 const activeTasks = new Set()
 const pendingTasks = []
 const agentTaskCreationLocks = new Map()
@@ -79,8 +80,13 @@ async function writeJsonFile(path, value) {
 }
 
 async function saveTask(task) {
-  const { progress: _progress, input: _input, instructions: _instructions, ...snapshot } = task
+  const { progress: _progress, input: _input, instructions: _instructions, captionContext: _captionContext, ...snapshot } = task
   await writeJsonFile(taskPath(task.id), snapshot)
+  if (task.kind !== 'agent') return
+  await writeJsonFile(agentProgressPath(task.id), task.progress || getAgentProgress(task))
+}
+
+async function saveAgentProgress(task) {
   if (task.kind !== 'agent') return
   await writeJsonFile(agentProgressPath(task.id), task.progress || getAgentProgress(task))
 }
@@ -142,6 +148,7 @@ function publicAgentProgress(task, includeImages = false) {
     text: progress.text,
     outputItems: getPublicAgentOutputItems(progress.outputItems),
     pendingImages: progress.pendingImages,
+    captionState: progress.captionState || task.captionState || 'idle',
     ...(includeImages ? {
       images: progress.images.map((image, index) => {
         const { dataUrl: _dataUrl, ...metadata } = image
@@ -309,6 +316,7 @@ function publicTask(task, includeResult = false) {
   return {
     id: task.id,
     status: task.status,
+    captionState: task.kind === 'agent' ? task.captionState || 'idle' : undefined,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
     finishedAt: task.finishedAt ?? null,
@@ -961,7 +969,6 @@ function createAgentGeneratedImagesInput(images) {
   if (images.length === 0) return null
   const content = []
   for (const image of images) {
-    content.push({ type: 'input_image', image_url: image.dataUrl })
     content.push({
       type: 'input_text',
       text: `<ref id="${image.referenceId}" prompt="${escapeXmlAttribute(image.prompt)}" />`,
@@ -1073,6 +1080,91 @@ function createAgentProgressReporter(task) {
     report,
     flush: () => queueSave(),
   }
+}
+
+async function completeAgentCaption(task, context) {
+  const { input, instructions, textSegments, outputItems } = context
+  const baseText = textSegments.join('\n\n').trim()
+  task.captionState = 'running'
+  const previousStart = getAgentProgress(task)
+  task.progress = {
+    ...previousStart,
+    captionState: 'running',
+  }
+  task.updatedAt = Date.now()
+  await saveAgentProgress(task)
+  broadcastAgentEvent(task)
+
+  let streamedText = ''
+  let payload
+  try {
+    payload = await callAgentUpstream(
+      input,
+      `${instructions}\n\n${AGENT_CAPTION_INSTRUCTION}`,
+      [],
+      async (delta) => {
+        streamedText += delta
+        const previous = getAgentProgress(task)
+        task.progress = {
+          ...previous,
+          revision: previous.revision + 1,
+          text: [baseText, streamedText].filter(Boolean).join('\n\n'),
+        }
+        task.updatedAt = Date.now()
+        await saveAgentProgress(task)
+        broadcastAgentEvent(task)
+      },
+      async () => {
+        streamedText = ''
+        const previous = getAgentProgress(task)
+        task.progress = {
+          ...previous,
+          revision: previous.revision + 1,
+          text: baseText,
+        }
+        task.updatedAt = Date.now()
+        await saveAgentProgress(task)
+        broadcastAgentEvent(task)
+      },
+    )
+  } catch (error) {
+    console.warn('Agent 图片文案整理失败', error)
+    task.captionState = 'done'
+    const previousError = getAgentProgress(task)
+    task.progress = {
+      ...previousError,
+      captionState: 'done',
+    }
+    task.updatedAt = Date.now()
+    await saveTask(task)
+    broadcastAgentEvent(task)
+    return
+  }
+
+  const currentOutput = getAgentResponseOutput(payload)
+  const captionText = getAgentResponseText(payload) || streamedText.trim()
+  const finalText = [baseText, captionText].filter(Boolean).join('\n\n') || '图片已生成。'
+  const finalOutputItems = [...outputItems, ...currentOutput]
+  const previous = getAgentProgress(task)
+  task.result = {
+    ...task.result,
+    responseId: typeof payload.id === 'string' ? payload.id : task.result.responseId,
+    text: finalText,
+    outputItems: finalOutputItems,
+    rawResponsePayload: JSON.stringify({ output: finalOutputItems }, null, 2),
+  }
+  task.progress = {
+    ...previous,
+    revision: previous.revision + 1,
+    text: finalText,
+    outputItems: finalOutputItems,
+    pendingImages: [],
+    captionState: 'done',
+  }
+  task.captionState = 'done'
+  task.updatedAt = Date.now()
+  await saveTask(task)
+  broadcastAgentEvent(task)
 }
 
 async function executeAgentImage(task, toolCallId, prompt, references, metadata = {}) {
@@ -1227,19 +1319,41 @@ async function executeAgentUpstream(task) {
       images,
       pendingImages: getAgentPendingImages(outputItems, images),
     }, true)
-    input = [...input, ...currentOutput, ...functionOutputs]
+    const nextInput = [...input, ...currentOutput, ...functionOutputs]
     const generatedInput = createAgentGeneratedImagesInput(generatedThisRound)
-    if (generatedInput) input.push(generatedInput)
+    if (generatedInput) nextInput.push(generatedInput)
+
+    const shouldDetachCaption = generatedThisRound.length > 0
+      && functionCalls.length === 1
+      && functionCalls[0].name === 'generate_image'
+    if (shouldDetachCaption) {
+      task.captionState = 'pending'
+      task.captionContext = {
+        input: nextInput,
+        instructions: task.instructions,
+        textSegments: [...textSegments],
+        outputItems: [...outputItems],
+      }
+      break
+    }
+
+    input = nextInput
   }
 
   await progress.flush()
 
-  return {
+  const result = {
     responseId,
     text: textSegments.join('\n\n').trim(),
     images,
     outputItems,
     rawResponsePayload: JSON.stringify({ output: outputItems }, null, 2),
+  }
+  return {
+    result,
+    startCaption: task.captionContext
+      ? () => completeAgentCaption(task, task.captionContext)
+      : null,
   }
 }
 
@@ -1250,8 +1364,13 @@ async function runTask(task) {
     task.updatedAt = Date.now()
     await saveTask(task)
     broadcastAgentEvent(task)
+    let startCaption = null
     try {
-      task.result = task.kind === 'agent' ? await executeAgentUpstream(task) : await executeUpstream(task)
+      const execution = task.kind === 'agent'
+        ? await executeAgentUpstream(task)
+        : { result: await executeUpstream(task), startCaption: null }
+      task.result = execution.result
+      startCaption = execution.startCaption
       task.status = 'done'
       task.error = null
     } catch (error) {
@@ -1266,6 +1385,7 @@ async function runTask(task) {
     task.updatedAt = task.finishedAt
     await saveTask(task)
     broadcastAgentEvent(task)
+    if (startCaption) void startCaption()
     if (task.kind === 'agent') await unlink(agentContextPath(task.id)).catch(() => {})
   } catch (error) {
     task.status = 'error'
@@ -1353,6 +1473,15 @@ async function restoreTasks() {
     try {
       const task = await loadTask(name.slice(0, -'.json'.length))
       if (!task) continue
+      if (task.kind === 'agent' && task.status === 'done' && task.captionState && task.captionState !== 'done') {
+        task.captionState = 'done'
+        task.progress = {
+          ...getAgentProgress(task),
+          captionState: 'done',
+        }
+        await saveTask(task)
+        continue
+      }
       if (await recoverAgentPartialResult(task)) {
         await saveTask(task)
         continue

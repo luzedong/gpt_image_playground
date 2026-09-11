@@ -19,6 +19,7 @@ export interface ServerAgentTaskProgress {
   outputItems: AgentApiResult['outputItems']
   pendingImages: ServerAgentPendingImage[]
   images?: ServerAgentProgressImage[]
+  captionState?: 'idle' | 'pending' | 'running' | 'done'
 }
 
 export type ServerAgentProgressImage = Omit<AgentApiResult['images'][number], 'dataUrl'> & {
@@ -30,6 +31,7 @@ export type ServerAgentProgressImage = Omit<AgentApiResult['images'][number], 'd
 type ServerAgentTaskResponse = {
   task_id?: string
   status?: 'queued' | 'running' | 'done' | 'error'
+  captionState?: 'idle' | 'pending' | 'running' | 'done'
   error?: { message?: string } | string
   progress?: ServerAgentTaskProgress
   result?: Omit<AgentApiResult, 'images'> & { images: ServerAgentProgressImage[] }
@@ -263,7 +265,11 @@ async function ensureResult(payload: ServerAgentTaskResponse, signal?: AbortSign
       dataUrl: await blobToDataUrl(await response.blob(), image.mime || 'image/png'),
     } as AgentApiResult['images'][number]
   }))
-  return { ...payload.result, images }
+  return {
+    ...payload.result,
+    images,
+    captionState: payload.result.captionState ?? payload.captionState,
+  }
 }
 
 export async function callServerManagedAgentApi(opts: {
@@ -404,6 +410,46 @@ export async function callServerManagedAgentApi(opts: {
     } catch (err) {
       if (!isRetryableTaskRequestError(err)) throw err
       await waitForNextPoll(opts.signal, getRetryDelay(retryAttempt, baseDelayMs))
+      retryAttempt += 1
+    }
+  }
+}
+
+export async function watchServerManagedAgentCaption(opts: {
+  taskId: string
+  pollIntervalMs?: number
+  timeoutMs?: number
+  onResult: (result: AgentApiResult) => void | Promise<void>
+}): Promise<AgentApiResult | null> {
+  const baseDelayMs = Math.max(250, opts.pollIntervalMs ?? 500)
+  const timeoutMs = Math.max(0, opts.timeoutMs ?? 120_000)
+  const deadline = Date.now() + timeoutMs
+  let retryAttempt = 0
+
+  while (true) {
+    if (Date.now() >= deadline) return null
+    try {
+      const payload = await fetchTask(opts.taskId, undefined, '?meta=1')
+      retryAttempt = 0
+      const captionState = payload.progress?.captionState ?? payload.captionState ?? 'idle'
+      if (captionState === 'done') {
+        const resultPayload = await fetchTask(opts.taskId, undefined, '/result')
+        if (!resultPayload.result || !Array.isArray(resultPayload.result.outputItems)) {
+          throw new Error('服务端 Agent 文案整理完成，但没有返回有效响应')
+        }
+        const result = {
+          ...resultPayload.result,
+          images: [],
+          captionState: resultPayload.result.captionState ?? resultPayload.captionState,
+        }
+        await opts.onResult(result)
+        return result
+      }
+      if (payload.status === 'error') throw new Error(getErrorMessage(payload, '服务端 Agent 任务失败'))
+      await waitForNextPoll(undefined, baseDelayMs)
+    } catch (err) {
+      if (!isRetryableTaskRequestError(err)) throw err
+      await waitForNextPoll(undefined, getRetryDelay(retryAttempt, baseDelayMs))
       retryAttempt += 1
     }
   }

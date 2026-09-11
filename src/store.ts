@@ -49,7 +49,7 @@ import {
 import { callImageApi } from './lib/api'
 import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle, createAgentInstructions, parseBatchImageCallArguments, type AgentApiResultImage } from './lib/agentApi'
 import { buildAgentApiInput, buildAgentContinuationInput } from './lib/agentInputBuilder'
-import { callServerManagedAgentApi, type ServerAgentPendingImage, type ServerAgentTaskProgress } from './lib/serverManagedAgentApi'
+import { callServerManagedAgentApi, watchServerManagedAgentCaption, type ServerAgentPendingImage, type ServerAgentTaskProgress } from './lib/serverManagedAgentApi'
 import { collectAgentRoundOutputImageSlots, extractAgentReferenceIds, getAgentCurrentReferenceId, getAgentGeneratedImageReferenceId } from './lib/agentImageReferences'
 import { showBrowserNotification } from './lib/browserNotification'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
@@ -2583,6 +2583,41 @@ async function commitServerManagedAgentResult(
   useStore.getState().showToast(outputTaskIds.length > 0 ? 'Agent 已生成图片' : 'Agent 已回复', 'success')
 }
 
+async function applyServerManagedAgentCaption(
+  conversationId: string,
+  roundId: string,
+  assistantMessageId: string,
+  result: Awaited<ReturnType<typeof callServerManagedAgentApi>>,
+) {
+  const state = useStore.getState()
+  const conversation = state.agentConversations.find((item) => item.id === conversationId)
+  const round = conversation?.rounds.find((item) => item.id === roundId)
+  if (!conversation || !round) return
+
+  const currentMessage = conversation.messages.find((message) => message.id === assistantMessageId)
+  const outputTaskIds = currentMessage?.outputTaskIds ?? round.outputTaskIds
+  const content = result.text.trim() || (outputTaskIds.length > 0 ? '图像已生成。' : '')
+
+  updateAgentConversation(conversationId, (current) => ({
+    ...current,
+    updatedAt: Date.now(),
+    rounds: current.rounds.map((item) => item.id === roundId
+      ? {
+          ...item,
+          assistantMessageId,
+          responseId: result.responseId,
+          responseOutput: result.outputItems,
+          status: 'done',
+          error: null,
+        }
+      : item),
+    messages: current.messages.map((message) => message.id === assistantMessageId
+      ? { ...message, content, outputTaskIds }
+      : message),
+  }))
+  await flushAgentConversationsToIndexedDB()
+}
+
 async function storeServerManagedAgentImages(
   conversationId: string,
   roundId: string,
@@ -2871,6 +2906,18 @@ async function executeServerManagedAgentRound(opts: {
     imageProfile,
     result,
   )
+
+  if (result.captionState && result.captionState !== 'done') {
+    void watchServerManagedAgentCaption({
+      taskId: round.serverTaskId!,
+      onResult: (captionResult) => applyServerManagedAgentCaption(
+        conversationId,
+        roundId,
+        assistantMessageId,
+        captionResult,
+      ),
+    }).catch(() => {})
+  }
 
   const latestConversation = useStore.getState().agentConversations.find((item) => item.id === conversationId)
   const fallbackTitle = createAgentConversationTitle(round.prompt, '新对话')
