@@ -176,3 +176,11 @@
 
 - 将浏览器标题、iOS/PWA 应用名、PWA manifest 名称和页面顶栏品牌从“绘语”统一改为 `IMAGE`。
 - 生产构建和完整测试（37 个测试文件、567 项）均通过。
+
+## 2026-09-11 服务端代理与 AIPixel 默认模型
+
+- 服务端新增 `UPSTREAM_PROXY_URL`，通过 `undici` 的 `EnvHttpProxyAgent` 让 Node 内置 `fetch` 出站请求走代理；Docker 运行时补入 `undici`。
+- jdy 配置文件增加 `UPSTREAM_PROXY_URL=http://172.17.0.1:7890`，容器启动日志确认 `upstream_proxy enabled host=172.17.0.1:7890`。
+- AIPixel 默认模型改为 `gpt-image-2.5-flare`，AILink 保持 `gpt-image-2`；服务端模式每次归一化设置时强制覆盖已保存的 AIPixel 模型，保留 AILink 模型。
+- 提交 `55e0977`、`f14dcec` 已推送；服务器构建镜像 `gpt-image-playground:f14dcec`，线上容器已更新。
+- 验证：临时容器通过 `172.17.0.1:7890` 请求外网返回代理出口 IP；正式容器代理日志、模型环境变量、公网首页均正常。
