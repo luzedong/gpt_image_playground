@@ -213,3 +213,9 @@
 - AIPixel 和 AILink 请求前统一将参考图重新编码为尺寸不变、白底、无透明通道的 8-bit RGB PNG。
 - 服务端托管请求与直连客户端请求两条链路均接入标准化；解码失败时保留原图并记录警告。
 - 本地验证通过：`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。
+
+## 2026-09-11 Agent 参考图标准化补充
+
+- 复查发现画廊请求已标准化，但服务端 Agent 上传的 `input_image` 仍保留原始编码，因此 AILink 的 `generate_image` 仍可能返回 `Invalid image file or mode`。
+- 在 Agent 输入上传前增加递归标准化，所有 `input_image` 先转为白底 8-bit RGB PNG，再上传资产供服务端生图工具引用。
+- 本地验证通过：`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。

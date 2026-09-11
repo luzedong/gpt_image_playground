@@ -1,5 +1,6 @@
 import type { AgentApiResult } from './agentApi'
 import type { TaskParams } from '../types'
+import { normalizeImageDataUrlForApi } from './canvasImage'
 import { blobToDataUrl, dataUrlToBytes } from './dataUrl'
 import { hashDataUrl } from './db'
 
@@ -92,10 +93,24 @@ function replaceImageDataUrls(value: unknown, assets: Map<string, { id: string; 
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, replaceImageDataUrls(item, assets)]))
 }
 
+async function normalizeAgentInputImages(value: unknown): Promise<unknown> {
+  if (Array.isArray(value)) return Promise.all(value.map((item) => normalizeAgentInputImages(item)))
+  if (!value || typeof value !== 'object') return value
+  const record = value as Record<string, unknown>
+  if (record.type === 'input_image' && typeof record.image_url === 'string' && record.image_url.startsWith('data:image/')) {
+    return { ...record, image_url: await normalizeImageDataUrlForApi(record.image_url) }
+  }
+  const entries = await Promise.all(
+    Object.entries(record).map(async ([key, item]) => [key, await normalizeAgentInputImages(item)] as const),
+  )
+  return Object.fromEntries(entries)
+}
+
 async function prepareServerManagedAgentInput(input: unknown[]) {
+  const normalizedInput = await normalizeAgentInputImages(input) as unknown[]
   const dataUrls = new Set<string>()
-  collectImageDataUrls(input, dataUrls)
-  if (dataUrls.size === 0) return input
+  collectImageDataUrls(normalizedInput, dataUrls)
+  if (dataUrls.size === 0) return normalizedInput
 
   const assets = new Map<string, { id: string; mime: string; bytes: Uint8Array }>()
   for (const dataUrl of dataUrls) {
@@ -134,7 +149,7 @@ async function prepareServerManagedAgentInput(input: unknown[]) {
   }
 
   const replacements = new Map([...assets].map(([dataUrl, asset]) => [dataUrl, { id: asset.id, mime: asset.mime }]))
-  return replaceImageDataUrls(input, replacements) as unknown[]
+  return replaceImageDataUrls(normalizedInput, replacements) as unknown[]
 }
 
 async function fetchTask(taskId: string, signal: AbortSignal | undefined, path: string) {
