@@ -805,7 +805,7 @@ function getAgentResponseOutput(payload) {
   return Array.isArray(payload?.output) ? payload.output.filter((item) => item && typeof item === 'object') : []
 }
 
-async function readAgentStreamPayload(response, onTextDelta) {
+async function readAgentStreamPayload(response, onTextDelta, onReasoningDelta, onOutputItems) {
   if (!response.body) throw new Error('聊天 API 未返回流式响应体')
 
   let buffer = ''
@@ -838,6 +838,10 @@ async function readAgentStreamPayload(response, onTextDelta) {
     }
   }
 
+  const emitOutputItems = async () => {
+    await onOutputItems?.(fallbackOutput.filter(Boolean))
+  }
+
   const processEvent = async (block) => {
     const data = block
       .split(/\r?\n/)
@@ -862,6 +866,15 @@ async function readAgentStreamPayload(response, onTextDelta) {
     }
 
     const type = typeof event?.type === 'string' ? event.type : ''
+    if (
+      (type === 'response.reasoning_text.delta' || type === 'response.reasoning_summary_text.delta') &&
+      typeof event.delta === 'string' &&
+      event.delta
+    ) {
+      await onReasoningDelta?.(event.delta)
+      return
+    }
+
     if (type === 'response.output_text.delta' && typeof event.delta === 'string' && event.delta) {
       await onTextDelta?.(event.delta)
       return
@@ -877,6 +890,7 @@ async function readAgentStreamPayload(response, onTextDelta) {
             : undefined,
         )
       }
+      await emitOutputItems()
       const responseStatus = typeof event.response.status === 'string' ? event.response.status : ''
       if (type === 'response.completed' || type === 'response.done' || responseStatus === 'completed') {
         completedPayload = event.response
@@ -890,6 +904,32 @@ async function readAgentStreamPayload(response, onTextDelta) {
         [event.item],
         [Number.isInteger(event.output_index) ? event.output_index : undefined],
       )
+      await emitOutputItems()
+      return
+    }
+
+    if (type === 'response.function_call_arguments.delta' && typeof event.item_id === 'string') {
+      const index = fallbackOutput.findIndex((item) => item?.id === event.item_id)
+      if (index >= 0) {
+        const current = fallbackOutput[index]
+        fallbackOutput[index] = {
+          ...current,
+          arguments: `${typeof current.arguments === 'string' ? current.arguments : ''}${typeof event.delta === 'string' ? event.delta : ''}`,
+        }
+        await emitOutputItems()
+      }
+      return
+    }
+
+    if (type === 'response.function_call_arguments.done' && typeof event.item_id === 'string') {
+      const index = fallbackOutput.findIndex((item) => item?.id === event.item_id)
+      if (index >= 0) {
+        fallbackOutput[index] = {
+          ...fallbackOutput[index],
+          arguments: typeof event.arguments === 'string' ? event.arguments : fallbackOutput[index].arguments,
+        }
+        await emitOutputItems()
+      }
     }
   }
 
@@ -915,7 +955,7 @@ async function readAgentStreamPayload(response, onTextDelta) {
   return payload
 }
 
-async function callAgentUpstream(input, instructions, tools, onTextDelta, onRetry) {
+async function callAgentUpstream(input, instructions, tools, onTextDelta, onReasoningDelta, onOutputItems, onRetry) {
   const baseUrl = (process.env.CHAT_API_URL || process.env.API_URL || '').replace(/\/+$/, '')
   const apiKey = process.env.CHAT_API_KEY || process.env.API_KEY || ''
   const model = process.env.CHAT_MODEL || 'gpt-5.6-luna'
@@ -939,7 +979,7 @@ async function callAgentUpstream(input, instructions, tools, onTextDelta, onRetr
         throw new Error(message)
       }
       if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
-        return await readAgentStreamPayload(response, onTextDelta)
+        return await readAgentStreamPayload(response, onTextDelta, onReasoningDelta, onOutputItems)
       }
       const payload = await readApiPayload(response)
       if (!Array.isArray(payload?.output)) throw new Error('聊天 API 未返回有效响应')
@@ -1036,9 +1076,11 @@ function getAgentPendingImages(outputItems, images) {
     if (item.name === 'generate_image') {
       if (generatedToolCallIds.has(item.call_id)) continue
       const output = functionOutputs.get(item.call_id)
+      const prompt = typeof args?.prompt === 'string' ? args.prompt : ''
+      if (!prompt) continue
       pending.push({
         toolCallId: item.call_id,
-        prompt: typeof args?.prompt === 'string' ? args.prompt : '',
+        prompt,
         status: output?.status === 'error' ? 'error' : 'running',
         ...(output?.error ? { error: output.error } : {}),
       })
@@ -1143,6 +1185,8 @@ async function completeAgentCaption(task, context) {
         await saveAgentProgress(task)
         broadcastAgentEvent(task)
       },
+      async () => {},
+      async () => {},
       async () => {
         streamedText = ''
         const previous = getAgentProgress(task)
@@ -1235,9 +1279,11 @@ async function executeAgentUpstream(task) {
 
   for (let responseRound = 0; responseRound < task.maxToolRounds; responseRound++) {
     let streamedText = ''
+    let thinkingText = ''
     let payload
     try {
       payload = await callAgentUpstream(input, task.instructions, tools, async (delta) => {
+        thinkingText = ''
         streamedText += delta
         await progress.report({
           text: [...textSegments, streamedText].filter(Boolean).join('\n\n'),
@@ -1246,7 +1292,30 @@ async function executeAgentUpstream(task) {
           pendingImages: [],
         })
       }, async () => {
+        if (streamedText || thinkingText) return
+        thinkingText = '正在思考...'
+        await progress.report({
+          text: [...textSegments, thinkingText].filter(Boolean).join('\n\n'),
+          outputItems,
+          images,
+          pendingImages: [],
+        }, true)
+      }, async (streamedOutputItems) => {
+        const visibleItems = [
+          ...outputItems,
+          ...streamedOutputItems.filter((item) =>
+            !item?.id || !outputItems.some((existing) => existing?.id === item.id),
+          ),
+        ]
+        await progress.report({
+          text: [...textSegments, streamedText || thinkingText].filter(Boolean).join('\n\n'),
+          outputItems: visibleItems,
+          images,
+          pendingImages: getAgentPendingImages(visibleItems, images),
+        }, true)
+      }, async () => {
         streamedText = ''
+        thinkingText = ''
         await progress.report({
           text: textSegments.join('\n\n').trim(),
           outputItems,

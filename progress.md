@@ -219,3 +219,9 @@
 - 复查发现画廊请求已标准化，但服务端 Agent 上传的 `input_image` 仍保留原始编码，因此 AILink 的 `generate_image` 仍可能返回 `Invalid image file or mode`。
 - 在 Agent 输入上传前增加递归标准化，所有 `input_image` 先转为白底 8-bit RGB PNG，再上传资产供服务端生图工具引用。
 - 本地验证通过：`npm run build`、`npm test -- --run`（37 个测试文件、567 项）。
+
+## 2026-09-11 DeepSeek 工具调用流式进度
+
+- 线上日志确认 DeepSeek 在工具调用前只发送 `response.reasoning_text.delta`，真正的 `function_call` 直到 `response.output_item.added` / arguments done 才出现。
+- 服务端此前只转发 `response.output_text.delta`，没有把工具项和参数增量上报到 Agent 进度，导致前端在生图决策阶段长时间只显示等待，最后一次性出现工具调用。
+- 服务端现在会在 `response.output_item.added/done` 和 `response.function_call_arguments.delta/done` 时立即广播 output items；空参数工具占位会被过滤，参数完整后立即显示生图工具状态。
