@@ -168,4 +168,6 @@
 - 单次 `generate_image` 场景下，图片落盘并广播后立即结束任务，返回当前进度文案和图片；服务端启动 `captionState=pending` 的后台整理任务，最终文案再异步写入 progress/result。
 - 为减少后台文案流式更新带来的大文件写放大，新增 `saveAgentProgress`，文案增量只写 progress 文件，最终状态才写完整任务快照。
 - 前端在初始结果完成后监听 `captionState`，最终文案到达后更新 Agent 消息和响应输出，不重复存储图片。
-- 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、566 项）、`git diff --check`。
+- 验证通过：`node --check deploy/async-task-server.mjs`、`npm run build`、`npm test -- --run`（37 个测试文件、567 项）、`git diff --check`。
+- 提交 `0556826` 已推送；服务器使用 `deploy/Dockerfile` 构建镜像 `gpt-image-playground:0556826`，并按原端口、重启策略、API 配置只读挂载和任务数据挂载重建容器。
+- 部署后容器运行正常，本机和公网首页均返回 200，`/api-agent-assets/check` 返回 `{"missing":[]}`，容器内服务端文件确认包含文案异步整理逻辑。
