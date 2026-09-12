@@ -133,6 +133,47 @@ describe('agent input builder', () => {
     expect(loadImage).toHaveBeenCalledTimes(2)
   })
 
+  it('loads an explicitly mentioned historical user reference image', async () => {
+    const previous = round('round-1', 1, { inputImageIds: ['user-image'], assistantMessageId: 'assistant-1' })
+    const currentRound = round('round-2', 2, { parentRoundId: previous.id, status: 'running', finishedAt: null })
+    const loadImage = vi.fn(async (id: string) => `data:${id}`)
+
+    const input = await buildAgentApiInput({
+      conversation: conversation([previous, currentRound], [
+        message(previous, '第一轮'),
+        message(previous, '第一轮回复', { id: 'assistant-1', role: 'assistant' }),
+        message(currentRound, '参考 @第1轮参考图1 生成'),
+      ]),
+      currentRound,
+      tasks: [],
+      loadImage,
+    })
+    const serialized = JSON.stringify(input)
+
+    expect(serialized).toContain('<ref id=\\"round-1-reference-1\\" />')
+    expect(serialized).toContain('data:user-image')
+  })
+
+  it('drops historical user reference images that are not mentioned', async () => {
+    const previous = round('round-1', 1, { inputImageIds: ['user-image'], assistantMessageId: 'assistant-1' })
+    const currentRound = round('round-2', 2, { parentRoundId: previous.id, status: 'running', finishedAt: null })
+    const loadImage = vi.fn(async (id: string) => `data:${id}`)
+
+    const input = await buildAgentApiInput({
+      conversation: conversation([previous, currentRound], [
+        message(previous, '第一轮'),
+        message(previous, '第一轮回复', { id: 'assistant-1', role: 'assistant' }),
+        message(currentRound, '继续'),
+      ]),
+      currentRound,
+      tasks: [],
+      loadImage,
+    })
+
+    expect(JSON.stringify(input)).not.toContain('data:user-image')
+    expect(loadImage).not.toHaveBeenCalled()
+  })
+
   it('keeps declared references when an input image is missing', async () => {
     const currentRound = round('round-1', 1, { inputImageIds: ['missing-image'], status: 'running', finishedAt: null })
 

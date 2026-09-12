@@ -266,3 +266,10 @@
 - 服务器 `/root/gpt_image_playground` 已同步到 `5132f13`，镜像 `gpt-image-playground:5132f13`（`4b8cc27aa58f`）构建完成。
 - 线上容器由 `38726e3` 切换为 `5132f13`，容器 ID `08eb24906f3c`，端口 `5173:80`，`--restart unless-stopped`。
 - 验证：`docker ps` 显示运行中，公网 `http://223.109.200.25:5173/` 返回 200，启动日志确认 `upstream_proxy enabled host=172.17.0.1:7890`。
+
+## 2026-09-12 历史用户参考图引用修复（保守）
+
+- 现象：`@第N轮参考图M` 会被重写成 `<ref id="round-N-reference-M" />`，但 `resolveAgentPromptImageReferences` 只解析 `@第N轮图M`，导致该引用拿不到图片像素（临时用例确认 `IMAGE LOADED? false`、`loadImage` 零调用）。
+- 修复：`resolveAgentPromptImageReferences` 增加对 `AGENT_ROUND_INPUT_REFERENCE_RE` 的解析，按 `round.index` 定位轮次后取 `inputImageIds[imageIndex]` 加入 `allowedImageIds`，与该文件既有的 `replaceInputReference` 语义保持一致。
+- 默认裁剪策略不变：历史轮用户参考图仍不会自动携带，只有被当前消息显式 `@` 引用时才加载。
+- 新增两个回归测试（显式引用会加载、未引用则不加载）。本地验证：`npm test -- --run`（37 个文件、570 项）与 `npm run build` 均通过。

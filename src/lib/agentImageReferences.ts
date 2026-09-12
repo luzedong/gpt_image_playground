@@ -49,6 +49,14 @@ export function resolveAgentPromptImageReferences(prompt: string, rounds: AgentR
     const imageId = collectAgentRoundOutputImageSlots(round, tasks)[imageIndex]
     if (imageId) refs.push(imageId)
   }
+  for (const match of prompt.matchAll(AGENT_ROUND_INPUT_REFERENCE_RE)) {
+    const imageIndex = Number(match[2]) - 1
+    const round = rounds.find((item) => item.index === Number(match[1]))
+    if (!round || imageIndex < 0) continue
+
+    const imageId = round.inputImageIds[imageIndex]
+    if (imageId) refs.push(imageId)
+  }
   return refs
 }
 
