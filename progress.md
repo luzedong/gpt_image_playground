@@ -273,3 +273,5 @@
 - 修复：`resolveAgentPromptImageReferences` 增加对 `AGENT_ROUND_INPUT_REFERENCE_RE` 的解析，按 `round.index` 定位轮次后取 `inputImageIds[imageIndex]` 加入 `allowedImageIds`，与该文件既有的 `replaceInputReference` 语义保持一致。
 - 默认裁剪策略不变：历史轮用户参考图仍不会自动携带，只有被当前消息显式 `@` 引用时才加载。
 - 新增两个回归测试（显式引用会加载、未引用则不加载）。本地验证：`npm test -- --run`（37 个文件、570 项）与 `npm run build` 均通过。
+- 提交 `566940f` 已推送；服务器 `docker build -f deploy/Dockerfile -t gpt-image-playground:566940f .` 构建成功（`edfa535f0611`）。
+- 线上容器切换为 `566940f`，容器 ID `a21db2e2a5ac`，公网 200，启动日志确认 `upstream_proxy enabled host=172.17.0.1:7890`。
