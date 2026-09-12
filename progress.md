@@ -348,3 +348,11 @@
 - `UPSTREAM_PROXY_URL` 保持为空（代理关闭）。模型未改：1K/2K 仍用请求携带的 profile 模型，4K 档仍强制 `IMAGE_AILINK_4K_MODEL`（`gpt-image-2`）。
 - 验证：容器内四个槽位 `GET {url}/models` 均 200（pixel-1k 1017ms、pixel-4k 517ms、ailink-1k 217ms、ailink-4k 221ms）；启动日志无 `upstream_proxy`；task route t+1s 可用，公网 200。
 - 说明：两步延迟实测（linkai 直连 ~0.51s vs 代理 ~0.80s；ai-pixel 直连 ~0.78s vs 代理 ~0.73s；5MB 下载代理吞吐约高 35%）后决定不用代理。
+
+## 2026-09-12 服务端模型覆盖开关（AILink 只支持 gpt-image-2）
+
+- `deploy/async-task-server.mjs` 新增 `IMAGE_MODEL_OVERRIDE`：设置后所有图像请求都用该模型，忽略请求携带的模型，优先级高于 4K 档的 AILink 默认模型。
+- 线上 `api-config.env` 追加 `IMAGE_MODEL_OVERRIDE=gpt-image-2`；AILink 只有这一个生图模型，配合"全部请求走 AILink"的临时部署使用。清空该变量即可恢复按 profile 模型发送。
+- 本地验证（假上游）：AIPixel profile × 1K/2K/4K 与 AILink profile × 1K 四组请求，请求体里全部是 `model=gpt-image-2`，路由槽位仍按原规则。
+- 提交 `aa28b6a` 已推送并部署：镜像 `gpt-image-playground:aa28b6a`（`bf854443081e`），容器 `efb23cd6fc2a`，task route t+1s 可用，公网 200，代理仍关闭。
+- 已知显示差异：详情页「来源」里的模型仍取自浏览器配置（可能显示 gpt-image-2.5-flare），实际请求已固定为 gpt-image-2。
