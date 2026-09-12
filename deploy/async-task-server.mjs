@@ -15,6 +15,8 @@ const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const UPSTREAM_RETRY_ATTEMPTS = 3
 const UPSTREAM_PROXY_URL = (process.env.UPSTREAM_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '').trim()
+// 部署级模型覆盖：设置后所有图像请求都用这个模型，忽略请求携带的模型（用于上游只支持单一模型的临时切换）。
+const IMAGE_MODEL_OVERRIDE = (process.env.IMAGE_MODEL_OVERRIDE || '').trim()
 const AGENT_CAPTION_INSTRUCTION = '图片已生成。请为用户写一段简洁的最终回复，不要调用任何工具。'
 
 if (UPSTREAM_PROXY_URL) {
@@ -553,7 +555,7 @@ function getUpstreamConfig(size, profileId = '', requestedModel = '') {
         || (isHighResolution ? process.env.IMAGE_4K_API_KEY : process.env.IMAGE_1K_API_KEY)
         || process.env.API_KEY || '',
     // 改走 AILink 时忽略请求携带的模型，避免把 AIPixel 的模型名发给 AILink。
-    model: forceAilink ? defaultModel : requestedModel || defaultModel,
+    model: IMAGE_MODEL_OVERRIDE || (forceAilink ? defaultModel : requestedModel || defaultModel),
   }
 }
 
