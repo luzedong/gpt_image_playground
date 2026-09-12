@@ -294,3 +294,5 @@
 - 服务端托管模式下 AIPixel 的强制纠正逻辑调整为：命中预设则保留用户选择，否则纠正为 `gpt-image-2.5-flare`；AILink 仍保留浏览器配置。
 - 服务端 `getUpstreamConfig` 使用请求携带的 `model`（仅在上游未提供时回退 env 默认值），因此下拉框选择会真正生效。
 - 本地验证：`npm test -- --run`（37 个文件、570 项）与 `npm run build` 均通过。
+- 提交 `a048911` 已推送并部署：镜像 `gpt-image-playground:a048911`（`103d97c668bf`），容器 `09e76321fd50`，公网 200，`upstream_proxy` 与 task server 监听均正常。
+- 线上产物确认：`assets/index-BTXdmL_l.js` 中已包含 `gpt-image-2.5-sunburst`。
