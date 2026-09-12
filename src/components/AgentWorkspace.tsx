@@ -716,8 +716,9 @@ export default function AgentWorkspace() {
       {/* Center Chat Area */}
       <section className="min-w-0 flex-1 flex flex-col relative">
         {/* Mobile Header Toggles */}
-        {/* 移动端对话标题栏常驻：之前滑动会自动收起，导致新建对话/查看历史必须滚回顶部。 */}
-        <div className="sticky top-0 z-20 lg:hidden overflow-hidden max-h-16 opacity-100 mb-2">
+        {/* 移动端对话标题栏常驻：之前会自动收起，且贴顶时被 fixed 的应用 Header（z-40）盖住，
+            看起来像被滑走了。这里固定停靠在 Header 下方。 */}
+        <div className="sticky top-[calc(var(--safe-area-top)+3.5rem)] z-30 lg:hidden overflow-hidden max-h-16 opacity-100 mb-2 bg-white/85 backdrop-blur dark:bg-gray-950/85">
           <div
             className="flex h-14 items-center justify-between border-b border-gray-200 bg-white/80 px-2 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80"
             onTouchStart={handleHeaderTouchStart}
