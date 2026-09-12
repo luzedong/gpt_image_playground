@@ -340,3 +340,11 @@
 - `npm test -- --run`（37 个文件、574 项）与 `npm run build`、`node --check` 均通过。
 - 提交 `48a4c1e` 已推送并部署：镜像 `gpt-image-playground:48a4c1e`（`d6fa8aaa6c68`），容器已切换，task route 在 t+2s 可用，公网 200。
 - 部署踩坑：服务器 shell 里 `http_proxy/https_proxy/all_proxy` 指向已失效的 `127.0.0.1:7890`，导致 `git pull` 报 `SSL_ERROR_SYSCALL`；直连 `ghfast.top` 正常（200 / 1.1s）。拉取时用 `env -u http_proxy -u https_proxy -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY git pull` 绕开。
+
+## 2026-09-12 全部图像请求临时改走 AILink（服务端配置）
+
+- 备份 `/etc/gpt-image-playground/api-config.env` 为 `api-config.env.bak-alltoailink-20260912-101631`。
+- 将 `IMAGE_PIXEL_1K_API_URL` / `IMAGE_PIXEL_4K_API_URL` 指向 `https://direct.linkai.pics/v1`，并把四组 `IMAGE_PIXEL_*_API_KEY` 全部替换为 AILink 的 key（文件内原本就有重复的 KEY 行，sed 按前缀统一替换，指纹校验 8 行一致）。
+- `UPSTREAM_PROXY_URL` 保持为空（代理关闭）。模型未改：1K/2K 仍用请求携带的 profile 模型，4K 档仍强制 `IMAGE_AILINK_4K_MODEL`（`gpt-image-2`）。
+- 验证：容器内四个槽位 `GET {url}/models` 均 200（pixel-1k 1017ms、pixel-4k 517ms、ailink-1k 217ms、ailink-4k 221ms）；启动日志无 `upstream_proxy`；task route t+1s 可用，公网 200。
+- 说明：两步延迟实测（linkai 直连 ~0.51s vs 代理 ~0.80s；ai-pixel 直连 ~0.78s vs 代理 ~0.73s；5MB 下载代理吞吐约高 35%）后决定不用代理。
