@@ -485,6 +485,35 @@ function is4K(size) {
   return Boolean(match && Number(match[1]) * Number(match[2]) > MAX_1K_PIXELS)
 }
 
+// Agent 工具可以按图指定尺寸。返回空字符串表示沿用任务自身的尺寸设置（含 auto / 非法值）。
+// 校验与规整规则对齐前端 src/lib/size.ts。
+function normalizeAgentImageSize(value) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.toLowerCase() === 'auto') return ''
+  const match = /^(\d+)\s*[xX×]\s*(\d+)$/.exec(trimmed)
+  if (!match) return ''
+
+  let width = Number(match[1])
+  let height = Number(match[2])
+  if (!width || !height) return ''
+  if (Math.max(width, height) / Math.min(width, height) > 3) return ''
+
+  const floorTo16 = (raw) => Math.max(16, Math.floor(raw / 16) * 16)
+  if (Math.max(width, height) > 3840) {
+    const scale = 3840 / Math.max(width, height)
+    width = floorTo16(width * scale)
+    height = floorTo16(height * scale)
+  }
+  const pixels = width * height
+  if (pixels > 8_294_400) {
+    const scale = Math.sqrt(8_294_400 / pixels)
+    width = floorTo16(width * scale)
+    height = floorTo16(height * scale)
+  }
+  return `${width}x${height}`
+}
+
 function isPixelApiUrl(baseUrl) {
   try {
     const hostname = new URL(baseUrl).hostname.toLowerCase()
@@ -765,6 +794,11 @@ function normalizeAgentTaskInput(input) {
 }
 
 function createAgentTools() {
+  const imageSizeProperty = {
+    type: 'string',
+    description: '输出尺寸。"auto" 表示沿用应用里的生图尺寸设置；也可填“宽x高”像素值（16 的倍数、长边不超过 3840、宽高比不超过 3:1）。'
+      + '常用：1024x1024、1024x1536、1536x1024（1K）；2048x2048、2560x1440（2K）；2880x2880、3456x2304、3840x2160、2160x3840、3840x1600（4K，超宽长卷用 3840x1600）。',
+  }
   const tools = [
     {
       type: 'function',
@@ -775,8 +809,9 @@ function createAgentTools() {
         properties: {
           id: { type: 'string' },
           prompt: { type: 'string' },
+          size: imageSizeProperty,
         },
-        required: ['id', 'prompt'],
+        required: ['id', 'prompt', 'size'],
         additionalProperties: false,
       },
       strict: true,
@@ -795,8 +830,9 @@ function createAgentTools() {
               properties: {
                 id: { type: 'string' },
                 prompt: { type: 'string' },
+                size: imageSizeProperty,
               },
-              required: ['id', 'prompt'],
+              required: ['id', 'prompt', 'size'],
               additionalProperties: false,
             },
           },
@@ -1285,9 +1321,10 @@ async function completeAgentCaption(task, context) {
 async function executeAgentImage(task, toolCallId, prompt, references, metadata = {}) {
   const cleanPrompt = stripAgentReferenceTags(prompt)
   if (!cleanPrompt) throw new Error('图像提示词不能为空')
+  const params = { ...task.params, n: 1, ...(metadata.size ? { size: metadata.size } : {}) }
   const startedAt = Date.now()
   const result = await executeUpstream({
-    params: { ...task.params, n: 1 },
+    params,
     prompt: cleanPrompt,
     inputImages: references,
     profileId: task.profileId,
@@ -1301,7 +1338,7 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
     ...(metadata.batchCallId ? { batchCallId: metadata.batchCallId, batchItemId: metadata.batchItemId } : {}),
     prompt: cleanPrompt,
     referenceIds: getAgentReferenceIds(prompt),
-    actualParams: { ...task.params, n: 1 },
+    actualParams: params,
     revisedPrompt: cleanPrompt,
     action: references.length > 0 ? 'edit' : 'generate',
     startedAt,
@@ -1409,7 +1446,7 @@ async function executeAgentUpstream(task) {
         const prompt = typeof args?.prompt === 'string' ? args.prompt : ''
         const refs = getAgentReferenceIds(prompt).map((id) => references.get(id)).filter((value) => typeof value === 'string')
         try {
-          const generated = await executeAgentImage(task, callId, prompt, refs)
+          const generated = await executeAgentImage(task, callId, prompt, refs, { size: normalizeAgentImageSize(args?.size) })
           generated.forEach((image) => {
             image.referenceId = `round-${task.roundIndex}-image-${images.length + 1}`
             images.push(image)
@@ -1432,6 +1469,7 @@ async function executeAgentUpstream(task) {
           const generated = await executeAgentImage(task, `${callId}:${itemId}`, prompt, refs, {
             batchCallId: callId,
             batchItemId: itemId,
+            size: normalizeAgentImageSize(item?.size),
           })
           return { id: itemId, status: 'done', generated }
         } catch (error) {

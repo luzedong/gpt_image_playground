@@ -3,6 +3,7 @@ import { buildApiUrl, isServerManagedApiConfigEnabled, readClientDevProxyConfig,
 import { appendStreamingFormatHint, getApiErrorMessage, getResponsesImageResultBase64, maybeAppendStreamingHint, MIME_MAP, normalizeBase64Image, pickActualParams, PROMPT_REWRITE_GUARD_PREFIX } from './imageApiShared'
 import { normalizeResponsesOutputItems } from './responsesOutputState'
 import { isEventStreamResponse, readJsonServerSentEvents, throwIfAborted } from './serverSentEvents'
+import { normalizeAgentImageSize } from './size'
 
 export interface AgentApiResultImage {
   toolCallId?: string
@@ -73,6 +74,7 @@ export function createAgentInstructions(settings: AppSettings, codexCliSize?: st
     : DEFAULT_AGENT_MAX_TOOL_ROUNDS
   const imageToolInstruction = settings.agentApiConfigMode === 'hybrid'
     ? '单图请求使用 generate_image，多图并发请求使用 generate_image_batch。本次会话不提供内置 image_generation 工具。'
+      + '每张图可以用 size 单独指定像素尺寸（例如长卷用 3840x1600）；填 auto 表示沿用应用里的生图尺寸设置。'
     : '单图请求使用 image_generation，多图并发请求使用 generate_image_batch。'
   const imageInstructions = settings.agentApiConfigMode === 'hybrid'
     ? AGENT_IMAGE_INSTRUCTIONS.replace(/image_generation/g, 'generate_image')
@@ -106,6 +108,14 @@ const AGENT_TITLE_INSTRUCTIONS = [
 ].join('\n')
 
 const AGENT_TITLE_MAX_LENGTH = 28
+
+const AGENT_IMAGE_SIZE_PROPERTY = {
+  type: 'string',
+  description: '输出尺寸。填 "auto" 表示沿用应用里的生图尺寸设置；也可直接给“宽x高”像素值（16 的倍数，长边不超过 3840，宽高比不超过 3:1）。'
+    + '常用值：1024x1024、1024x1536、1536x1024（1K）；2048x2048、2560x1440、1440x2560（2K）；'
+    + '2880x2880、3456x2304、3840x2160、2160x3840、3840x1600（4K，超宽长卷用 3840x1600）。'
+    + '用户要求 4K、高清或长卷时按需填具体尺寸，不要只在提示词里写分辨率。',
+}
 
 function createHeaders(profile: ApiProfile): Record<string, string> {
   return {
@@ -165,8 +175,9 @@ function createGenerateImageFunctionTool() {
           type: 'string',
           description: '包含完整视觉细节的图像生成提示词。引用已有图片时请加入匹配的 XML 标签。',
         },
+        size: AGENT_IMAGE_SIZE_PROPERTY,
       },
-      required: ['id', 'prompt'],
+      required: ['id', 'prompt', 'size'],
       additionalProperties: false,
     },
     strict: true,
@@ -210,8 +221,9 @@ function createAgentTools(params: TaskParams, profile: ApiProfile, settings: App
                 type: 'string',
                 description: '包含完整视觉细节的图像生成提示词。如果引用之前的图片，请加入匹配的 XML 标签，例如 <ref id="round-1-image-1" />。',
               },
+              size: AGENT_IMAGE_SIZE_PROPERTY,
             },
-            required: ['id', 'prompt'],
+            required: ['id', 'prompt', 'size'],
             additionalProperties: false,
           },
         },
@@ -902,11 +914,11 @@ export async function callBatchImageSingle(opts: {
 }
 
 /** Parse the arguments of a generate_image_batch function call */
-export function parseBatchImageCallArguments(args: string): Array<{ id: string; prompt: string }> | null {
+export function parseBatchImageCallArguments(args: string): Array<{ id: string; prompt: string; size: string }> | null {
   try {
     const parsed = JSON.parse(args) as { images?: unknown }
     if (!parsed || !Array.isArray(parsed.images)) return null
-    const items: Array<{ id: string; prompt: string }> = []
+    const items: Array<{ id: string; prompt: string; size: string }> = []
     const ids = new Set<string>()
     for (const raw of parsed.images) {
       if (!raw || typeof raw !== 'object') continue
@@ -917,7 +929,7 @@ export function parseBatchImageCallArguments(args: string): Array<{ id: string; 
       let id = baseId
       for (let suffix = 2; ids.has(id); suffix++) id = `${baseId}_${suffix}`
       ids.add(id)
-      items.push({ id, prompt })
+      items.push({ id, prompt, size: normalizeAgentImageSize(item.size) })
     }
     return items.length > 0 ? items : null
   } catch {

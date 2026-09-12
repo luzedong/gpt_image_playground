@@ -84,6 +84,26 @@ export function normalizeCodexCliImageSize(size: string) {
   return `${width}x${height}`
 }
 
+/**
+ * 解析 Agent 工具里按图指定的尺寸。
+ * 返回空字符串表示沿用应用设置（模型填了 auto / 空值 / 非法值），否则返回规整后的 `宽x高`。
+ */
+export function normalizeAgentImageSize(value: unknown) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.toLowerCase() === 'auto') return ''
+  const match = trimmed.match(SIZE_PATTERN)
+  if (!match) return ''
+
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!width || !height) return ''
+  if (Math.max(width, height) / Math.min(width, height) > MAX_ASPECT_RATIO) return ''
+
+  const normalized = normalizeDimensions(width, height)
+  return `${normalized.width}x${normalized.height}`
+}
+
 export function prependCodexCliSizePrompt(prompt: string, size: string) {
   if (size === 'auto') return prompt
   const trimmed = prompt.trimStart()

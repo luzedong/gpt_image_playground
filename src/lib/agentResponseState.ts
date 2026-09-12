@@ -124,6 +124,11 @@ export function sanitizeResponseOutputForInput(output: ResponsesOutputItem[], op
   })
 }
 
+/** 重写批量参数时保留模型给出的单图尺寸；未指定尺寸的条目维持原有形状，避免多余字段。 */
+function serializeBatchItems(items: Array<{ id: string; prompt: string; size: string }>) {
+  return items.map(({ id, prompt, size }) => size ? { id, prompt, size } : { id, prompt })
+}
+
 export function canonicalizeBatchFunctionCallArguments(output: ResponsesOutputItem[]) {
   let changed = false
   const canonical = output.map((item) => {
@@ -133,7 +138,7 @@ export function canonicalizeBatchFunctionCallArguments(output: ResponsesOutputIt
     try {
       const parsed = JSON.parse(item.arguments ?? '{}')
       if (!isRecord(parsed)) return item
-      const args = JSON.stringify({ ...parsed, images: batchItems })
+      const args = JSON.stringify({ ...parsed, images: serializeBatchItems(batchItems) })
       if (args === item.arguments) return item
       changed = true
       return { ...item, arguments: args }
@@ -159,7 +164,7 @@ export function scrubResponseOutputForDeletedAgentTasks(round: AgentRound, outpu
       .map((task) => task.agentToolCallId!),
   )
   const tasksById = new Map(roundTasks.map((task) => [task.id, task]))
-  const batchItemsByCallId = new Map<string, Array<{ id: string; prompt: string }>>()
+  const batchItemsByCallId = new Map<string, Array<{ id: string; prompt: string; size: string }>>()
   for (const item of output) {
     if (item.type !== 'function_call' || item.name !== 'generate_image_batch' || !item.call_id) continue
     const batchItems = parseBatchImageCallArguments(item.arguments ?? '')
@@ -222,7 +227,10 @@ export function scrubResponseOutputForDeletedAgentTasks(round: AgentRound, outpu
           scrubbed.push(item)
           continue
         }
-        const args = JSON.stringify({ ...parsed, images: batchItems.filter((batchItem) => !itemIds.has(batchItem.id)) })
+        const args = JSON.stringify({
+          ...parsed,
+          images: serializeBatchItems(batchItems.filter((batchItem) => !itemIds.has(batchItem.id))),
+        })
         if (args === item.arguments) {
           scrubbed.push(item)
           continue

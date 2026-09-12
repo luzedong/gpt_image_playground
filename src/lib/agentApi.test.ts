@@ -11,9 +11,25 @@ describe('parseBatchImageCallArguments', () => {
       { prompt: 'missing id' },
       { id: 'skipped', prompt: '   ' },
     ] }))).toEqual([
-      { id: 'hero', prompt: 'first prompt' },
-      { id: 'image_2', prompt: 'blank id' },
-      { id: 'image_3', prompt: 'missing id' },
+      { id: 'hero', prompt: 'first prompt', size: '' },
+      { id: 'image_2', prompt: 'blank id', size: '' },
+      { id: 'image_3', prompt: 'missing id', size: '' },
+    ])
+  })
+
+  it('keeps per-image sizes and drops unsupported ones', () => {
+    expect(parseBatchImageCallArguments(JSON.stringify({ images: [
+      { id: 'wide', prompt: 'long scroll', size: '3840x1600' },
+      { id: 'auto', prompt: 'follow settings', size: 'auto' },
+      { id: 'round', prompt: 'snap to 16', size: '1025x1537' },
+      { id: 'too-wide', prompt: 'aspect too extreme', size: '3840x800' },
+      { id: 'garbage', prompt: 'not a size', size: '4K' },
+    ] }))).toEqual([
+      { id: 'wide', prompt: 'long scroll', size: '3840x1600' },
+      { id: 'auto', prompt: 'follow settings', size: '' },
+      { id: 'round', prompt: 'snap to 16', size: '1024x1536' },
+      { id: 'too-wide', prompt: 'aspect too extreme', size: '' },
+      { id: 'garbage', prompt: 'not a size', size: '' },
     ])
   })
 
@@ -26,10 +42,10 @@ describe('parseBatchImageCallArguments', () => {
     ] })
 
     expect(parseBatchImageCallArguments(args)).toEqual([
-      { id: 'same', prompt: 'one' },
-      { id: 'same_2', prompt: 'two' },
-      { id: 'same_2_2', prompt: 'three' },
-      { id: 'same_3', prompt: 'four' },
+      { id: 'same', prompt: 'one', size: '' },
+      { id: 'same_2', prompt: 'two', size: '' },
+      { id: 'same_2_2', prompt: 'three', size: '' },
+      { id: 'same_3', prompt: 'four', size: '' },
     ])
     expect(parseBatchImageCallArguments(args)).toEqual(parseBatchImageCallArguments(args))
   })

@@ -320,3 +320,12 @@
   - 直连同一批地址正常：`ai-pixel.online` 401 / 0.77s，`direct.linkai.pics` 401 / 0.52s，`api.deepseek.com` 401 / 0.23s。
 - 处理：备份 `/etc/gpt-image-playground/api-config.env` 为 `api-config.env.bak-20260912-091017`，将 `UPSTREAM_PROXY_URL` 置空后重建容器。
 - 验证：容器启动日志不再输出 `upstream_proxy`；容器内 `fetch` 三个上游均为 401（可达）——ai-pixel 1069ms、linkai 545ms、deepseek 135ms；公网 200，任务路由 200。
+
+## 2026-09-12 Agent 支持按图指定输出尺寸
+
+- 背景：Agent 工具 schema 原本只有 `id` / `prompt`，尺寸只能靠应用设置；模型误以为 4K 只能写进提示词。
+- 改动：`generate_image` 与 `generate_image_batch` 的每个图片条目新增必填 `size` 字段（`"auto"` = 沿用应用设置，或 `宽x高`），前后端工具定义、解析与执行同步。
+- 新增 `normalizeAgentImageSize`（前端 `src/lib/size.ts`，服务端 `deploy/async-task-server.mjs` 同规则副本）：自动对齐 16 的倍数、长边上限 3840、宽高比上限 3:1、像素上限 8,294,400；`auto`、空值、非法值一律回退为应用设置。
+- AILink/AIPixel 档位仍由 `is4K(size)` 决定，因此模型给大尺寸时会自动切到 4K 上游。
+- 批量参数重写（`agentResponseState`）保留模型给出的尺寸，未指定的条目不再多出空字段。
+- 验证：`npm test -- --run`（37 个文件、571 项）与 `npm run build`、`node --check` 均通过；本地用假上游跑通真实服务端链路——`size: "3840x1600"` 时请求打到 `/pixel-4k/images/generations` 且请求体含 `"size":"3840x1600"`；`4096x1600` 被规整为 `3840x1488`。

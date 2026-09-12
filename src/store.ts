@@ -70,7 +70,7 @@ import { cleanStaleAgentInputDrafts, clearInputDraftState, isEmptyAgentInputDraf
 import { ALL_FAVORITES_COLLECTION_ID, DEFAULT_FAVORITE_COLLECTION_ID, createDefaultFavoriteCollection, deleteFavoriteCollectionState, ensureDefaultFavoriteCollection, getTaskFavoriteCollectionIds, mergeFavoriteCollections, normalizeFavoriteCollectionIds, normalizeFavoriteCollectionName, normalizeFavoriteCollections, normalizeFavoritePatch, normalizeLoadedFavoriteState, resolveDefaultFavoriteCollectionId, sameFavoriteCollectionIds } from './lib/favoriteState'
 import { createPersistedState, mergePersistedAgentConversations, migratePersistedState, normalizePersistedState } from './lib/persistedState'
 import { addImageSizeParam, createTaskDonePatch, createTaskErrorPatch, deriveAgentImageActualParams, deriveGalleryActualParams, firstActualParams, hasActualParams, hasActualSizeParam, mapActualParamsByImage, mapRevisedPromptsByImage, markInterruptedOpenAIRunningTasks } from './lib/taskState'
-import { stripInjectedCodexCliSizePrompt } from './lib/size'
+import { normalizeAgentImageSize, stripInjectedCodexCliSizePrompt } from './lib/size'
 
 const FAL_RECOVERY_POLL_MS = 10_000
 const CUSTOM_RECOVERY_POLL_MS = 10_000
@@ -3527,13 +3527,13 @@ async function executeAgentRound(
       return { dataUrls, imageIds }
     }
 
-    const parseSingleImageCallArguments = (args: string): { id: string; prompt: string } | null => {
+    const parseSingleImageCallArguments = (args: string): { id: string; prompt: string; size: string } | null => {
       try {
         const parsed = JSON.parse(args) as Record<string, unknown>
         const prompt = typeof parsed.prompt === 'string' ? parsed.prompt.trim() : ''
         if (!prompt) return null
         const id = typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : 'image'
-        return { id, prompt }
+        return { id, prompt, size: normalizeAgentImageSize(parsed.size) }
       } catch {
         return null
       }
@@ -3614,6 +3614,7 @@ async function executeAgentRound(
       const taskParams = {
         ...normalizeParamsForSettings(imageParams, imageRequestSettings, { hasInputImages: references.dataUrls.length > 0 }),
         n: 1,
+        ...(item.size ? { size: item.size } : {}),
       }
 
       const taskId = await ensureStreamingAgentTask(toolCallId, item.prompt, references.imageIds, {
@@ -3681,8 +3682,9 @@ async function executeAgentRound(
           ? {
               ...normalizeParamsForSettings(imageParams, imageRequestSettings, { hasInputImages: references.dataUrls.length > 0 }),
               n: 1,
+              ...(item.size ? { size: item.size } : {}),
             }
-          : { ...imageParams, n: 1 }
+          : { ...imageParams, n: 1, ...(item.size ? { size: item.size } : {}) }
         await ensureStreamingAgentTask(batchToolCallId, item.prompt, references.imageIds, {
           createdAt: Date.now(),
           taskParams,
