@@ -385,30 +385,23 @@ export async function callServerManagedAgentApi(opts: {
     shouldUseEvents = false
   }
 
-  if (shouldUseEvents) {
-    try {
-      const status = await listenAgentEvents(created.task_id, opts.signal, publishProgress)
-      if (status === 'error') {
-        const payload = await fetchTask(created.task_id, opts.signal, '?meta=1')
-        throw new Error(getErrorMessage(payload, '服务端 Agent 异步任务失败'))
-      }
-      let resultRetryAttempt = 0
-      while (true) {
-        try {
-          const resultPayload = await fetchTask(created.task_id, opts.signal, '/result')
-          return ensureResult(resultPayload, opts.signal)
-        } catch (err) {
-          if (!isRetryableTaskRequestError(err)) throw err
-          await waitForNextPoll(opts.signal, getRetryDelay(resultRetryAttempt, baseDelayMs))
-          resultRetryAttempt += 1
-        }
-      }
-    } catch (err) {
-      if (!isRetryableTaskRequestError(err)) throw err
-    }
-  }
+  // 事件流与轮询并行：移动网络和内置浏览器常把 SSE 静默缓冲，只等事件流会让整轮
+  // 中间进度（文字、工具卡片）都看不到，直到任务结束才一次性出现。这里让轮询兜底，
+  // 两条通道谁先拿到新修订都能立刻推给界面。
+  const eventAbort = new AbortController()
+  const abortEvents = () => eventAbort.abort()
+  opts.signal?.addEventListener('abort', abortEvents, { once: true })
+  const eventsTask = shouldUseEvents
+    ? listenAgentEvents(created.task_id, eventAbort.signal, publishProgress)
+      .then((status) => (status === 'error' ? 'error' : null))
+      .catch((err) => {
+        if (!isRetryableTaskRequestError(err)) throw err
+        return null
+      })
+    : Promise.resolve(null)
 
-  while (true) {
+  try {
+    while (true) {
     try {
       const payload = await fetchTask(created.task_id, opts.signal, '?meta=1')
       retryAttempt = 0
@@ -433,6 +426,11 @@ export async function callServerManagedAgentApi(opts: {
       await waitForNextPoll(opts.signal, getRetryDelay(retryAttempt, baseDelayMs))
       retryAttempt += 1
     }
+    }
+  } finally {
+    opts.signal?.removeEventListener('abort', abortEvents)
+    eventAbort.abort()
+    void eventsTask.catch(() => {})
   }
 }
 
