@@ -302,3 +302,10 @@
 - 画廊提交走 `submitTask`，仅在 `settings.clearInputAfterSubmit` 为真时清空提示词与参考图；Agent 对话路径为无条件清空，因此出现“对话会清、画廊不清”。
 - `normalizeSettings` 与 `DEFAULT_SETTINGS` 中该开关默认值由 `false` 改为 `true`。
 - 已有浏览器若已持久化 `false`，加载时仍按持久值生效，需要在「设置 → 习惯配置」手动打开一次。
+
+## 2026-09-12 任务服务改为先监听再恢复历史任务
+
+- 现象：重启容器后立刻提交生图，报 `创建异步任务失败：HTTP 502`；nginx 日志为 `connect() failed (111: Connection refused) ... 127.0.0.1:3000`。
+- 原因：`async-task-server.mjs` 在 `server.listen` 之前先执行 `cleanupTasks()` + `restoreTasks()`，而任务目录有 336 个文件、646MB（含内联图片），恢复耗时数十秒，期间 3000 端口无人监听。
+- 修复：把 `server.listen` 提到恢复之前，`cleanupTasks()` / `restoreTasks()` 改为在监听回调内异步执行；恢复期间新建任务不受影响。
+- 本地验证：临时目录放 300 个任务文件，启动 2 秒内 `GET /api-tasks/<id>?meta=1` 即返回 200；随后 `restoreTasks()` 仍会把 `queued` 任务重新入队执行。

@@ -1877,7 +1877,13 @@ const server = createServer(async (req, res) => {
 await mkdir(DATA_DIR, { recursive: true })
 await mkdir(AGENT_IMAGE_DIR, { recursive: true })
 await mkdir(AGENT_ASSET_DIR, { recursive: true })
-await cleanupTasks()
-await restoreTasks()
+// 先监听再恢复历史任务。恢复需要逐个读取数百个大任务文件（含内联图片），耗时可达数十秒，
+// 若放在 listen 之前，重启后这段时间 nginx 连不上 3000，用户会看到“创建异步任务失败：HTTP 502”。
+server.listen(3000, '127.0.0.1', () => {
+  console.log('Async image task server listening on 127.0.0.1:3000')
+  void (async () => {
+    await cleanupTasks()
+    await restoreTasks()
+  })().catch((error) => console.error('恢复历史任务失败', error))
+})
 setInterval(() => void cleanupTasks(), 6 * 60 * 60 * 1000)
-server.listen(3000, '127.0.0.1', () => console.log('Async image task server listening on 127.0.0.1:3000'))
