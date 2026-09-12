@@ -389,6 +389,47 @@ function dataUrlToBlob(dataUrl) {
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const STRIPPED_PNG_CHUNKS = new Set(['caBX', 'c2pa'])
+const SUPPORTED_UPSTREAM_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+
+function readImageRatio(dataUrl) {
+  try {
+    const buffer = dataUrlToBuffer(dataUrl)
+    if (buffer.length > 24 && buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
+      return buffer.readUInt32BE(16) / buffer.readUInt32BE(20)
+    }
+    if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+      let offset = 2
+      while (offset + 9 < buffer.length) {
+        if (buffer[offset] !== 0xff) {
+          offset += 1
+          continue
+        }
+        const marker = buffer[offset + 1]
+        const length = buffer.readUInt16BE(offset + 2)
+        const isStartOfFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+        if (isStartOfFrame) return buffer.readUInt16BE(offset + 7) / buffer.readUInt16BE(offset + 5)
+        offset += 2 + length
+      }
+    }
+  } catch {
+    // 解析失败时不做限制。
+  }
+  return null
+}
+
+/**
+ * 编辑请求的 size 必须跟参考图比例一致，否则上游会直接返回 400（Invalid image file or mode）。
+ * 比例不符时返回空字符串，让请求不带 size，由上游自行选择。
+ */
+function resolveEditSize(size, inputImages) {
+  if (size === 'auto' || !inputImages.length) return size
+  const match = /^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/.exec(size)
+  if (!match) return size
+  const targetRatio = Number(match[1]) / Number(match[2])
+  const sourceRatio = readImageRatio(inputImages[0])
+  if (!sourceRatio) return size
+  return Math.abs(targetRatio - sourceRatio) / sourceRatio > 0.02 ? '' : size
+}
 
 function stripPngMetadataChunks(buffer) {
   if (buffer.length < 8 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) return buffer
@@ -716,13 +757,18 @@ async function executeUpstreamRequest(task, config) {
   const inputImages = task.inputImages
   const isEdit = inputImages.length > 0
   const imageField = isPixel && inputImages.length === 1 ? 'image' : 'image[]'
+  const requestSize = isEdit ? resolveEditSize(task.params.size, inputImages) : task.params.size
+  const hasRequestSize = requestSize !== 'auto' && requestSize !== ''
+  if (isEdit && task.params.size !== 'auto' && !requestSize) {
+    console.log(JSON.stringify({ type: 'edit_size_dropped', taskId: task.id, size: task.params.size, sourceRatio: readImageRatio(inputImages[0]) }))
+  }
   const requestStartedAt = Date.now()
   let response
   if (isEdit) {
     const form = new FormData()
     form.append('model', config.model)
     form.append('prompt', task.prompt)
-    if (task.params.size !== 'auto') form.append('size', task.params.size)
+    if (hasRequestSize) form.append('size', requestSize)
     if (!isPixel) {
       form.append('output_format', task.params.output_format)
       form.append('moderation', task.params.moderation)
@@ -735,6 +781,10 @@ async function executeUpstreamRequest(task, config) {
     if (task.params.n > 1) form.append('n', String(task.params.n))
     for (let index = 0; index < inputImages.length; index++) {
       const blob = await sanitizeImageBlobForUpstream(dataUrlToBlob(inputImages[index]))
+      // 上游只认 PNG/JPEG/WebP。手机相册常见 HEIC，若前端没能转换，这里给出明确报错而不是让上游回一句 Invalid image file。
+      if (!SUPPORTED_UPSTREAM_IMAGE_TYPES.has(blob.type)) {
+        throw new Error(`参考图格式不受支持：${blob.type || '未知'}，请重新选择 JPG/PNG 图片`)
+      }
       const extension = blob.type.split('/')[1] || 'png'
       form.append(imageField, blob, `input-${index + 1}.${extension}`)
     }
@@ -746,7 +796,7 @@ async function executeUpstreamRequest(task, config) {
       model: config.model,
       prompt: task.prompt,
       response_format: 'b64_json',
-      ...(task.params.size !== 'auto' ? { size: task.params.size } : {}),
+      ...(hasRequestSize ? { size: requestSize } : {}),
       ...(!isPixel ? {
         output_format: task.params.output_format,
         moderation: task.params.moderation,

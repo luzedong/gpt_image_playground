@@ -356,3 +356,10 @@
 - 本地验证（假上游）：AIPixel profile × 1K/2K/4K 与 AILink profile × 1K 四组请求，请求体里全部是 `model=gpt-image-2`，路由槽位仍按原规则。
 - 提交 `aa28b6a` 已推送并部署：镜像 `gpt-image-playground:aa28b6a`（`bf854443081e`），容器 `efb23cd6fc2a`，task route t+1s 可用，公网 200，代理仍关闭。
 - 已知显示差异：详情页「来源」里的模型仍取自浏览器配置（可能显示 gpt-image-2.5-flare），实际请求已固定为 gpt-image-2。
+
+## 2026-09-12 根因：非安全上下文导致参考图不归一化（手机导入 400）
+
+- 现象：手机端导入相册图片后编辑报 `adobe bad request ... Invalid image file or mode for image 1`；桌面端用素材库图片正常。
+- 根因：`src/lib/serverManagedAgentApi.ts` 的 `prepareServerManagedAgentInput` 依赖 `hashDataUrl`，而 `crypto.subtle` 仅在安全上下文可用。用 `http://223.109.200.25:5173`（非 localhost 的 http）打开时 `hashDataUrl` 返回 `fallback-*`，原代码直接 `return input` —— **跳过了整个参考图归一化（JPEG 95 转换）与资产上传**，原始文件（手机相册常见 HEIC/大图）被内联发给服务端并转发上游，被 Adobe 拒绝。
+- 修复：`fallback-` 与 `/api-agent-assets/check` 不可用两条降级分支改为返回已归一化的 `normalizedInput`，只是不做资产复用；另外服务端在编辑前校验 MIME，非 PNG/JPEG/WebP 直接抛「参考图格式不受支持」而不是把上游的 Invalid image file 透给用户。
+- 验证：`npm test -- --run`（574 项）、`npm run build`、`node --check` 均通过。

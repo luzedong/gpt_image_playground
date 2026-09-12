@@ -106,6 +106,12 @@ async function normalizeAgentInputImages(value: unknown): Promise<unknown> {
   return Object.fromEntries(entries)
 }
 
+/**
+ * 参考图必须先归一化再交给服务端。crypto.subtle 只在安全上下文可用，
+ * 用 http://<ip>:5173 打开时资产哈希会退化成 fallback-*，过去这里直接返回原始 input，
+ * 导致手机导入的 HEIC/大图未经转换就发到上游并被拒（Invalid image file or mode）。
+ * 因此所有降级分支都返回已归一化的输入，只是不做资产复用。
+ */
 async function prepareServerManagedAgentInput(input: unknown[]) {
   const normalizedInput = await normalizeAgentInputImages(input) as unknown[]
   const dataUrls = new Set<string>()
@@ -117,7 +123,7 @@ async function prepareServerManagedAgentInput(input: unknown[]) {
     const mime = dataUrl.match(/^data:([^;,]+);base64,/i)?.[1] || 'image/png'
     const canonicalDataUrl = `data:${mime};base64,${dataUrl.slice(dataUrl.indexOf(',') + 1)}`
     const id = await hashDataUrl(canonicalDataUrl)
-    if (id.startsWith('fallback-')) return input
+    if (id.startsWith('fallback-')) return normalizedInput
     assets.set(dataUrl, { id, mime, bytes: dataUrlToBytes(dataUrl).bytes })
   }
 
@@ -130,7 +136,7 @@ async function prepareServerManagedAgentInput(input: unknown[]) {
       body: JSON.stringify({ ids: uncheckedIds }),
     })
     if (!response.ok) {
-      if (response.status === 404 || response.status === 405) return input
+      if (response.status === 404 || response.status === 405) return normalizedInput
       throw new Error(`检查 Agent 图片资产失败：HTTP ${response.status}`)
     }
     const payload = await response.json() as { missing?: unknown }
