@@ -338,3 +338,5 @@
 - 前端 `getHighResolutionImageSource`（`apiProfiles.ts`）+ 详情页「来源」：4K 档显示真实生效的 AILink 配置与模型，而不是当前选中的 AIPixel 配置。`src/lib/size.ts` 新增 `is4KImageSize` 作为同一判定的前端实现。
 - 本地验证（假上游、无计费）：AIPixel + `3840x1600` → `/ailink-4k` + `gpt-image-2`；AIPixel + `2048x2048` → `/pixel-4k` + `gpt-image-2.5-flare`；AIPixel + `1024x1536` → `/pixel-1k` + `gpt-image-2.5-flare`；AILink + `3840x1600` → `/ailink-4k` + 请求模型。
 - `npm test -- --run`（37 个文件、574 项）与 `npm run build`、`node --check` 均通过。
+- 提交 `48a4c1e` 已推送并部署：镜像 `gpt-image-playground:48a4c1e`（`d6fa8aaa6c68`），容器已切换，task route 在 t+2s 可用，公网 200。
+- 部署踩坑：服务器 shell 里 `http_proxy/https_proxy/all_proxy` 指向已失效的 `127.0.0.1:7890`，导致 `git pull` 报 `SSL_ERROR_SYSCALL`；直连 `ghfast.top` 正常（200 / 1.1s）。拉取时用 `env -u http_proxy -u https_proxy -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY git pull` 绕开。
