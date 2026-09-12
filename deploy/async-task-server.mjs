@@ -10,6 +10,7 @@ const MAX_INPUT_BYTES = 512 * 1024 * 1024
 const MAX_AGENT_ASSET_BYTES = 64 * 1024 * 1024
 const MAX_AUDIO_BASE64_BYTES = 10 * 1024 * 1024
 const MAX_1K_PIXELS = 1_572_864
+const MAX_2K_PIXELS = 4_194_304
 const TASK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CONCURRENCY = Math.max(1, Number(process.env.ASYNC_TASK_CONCURRENCY) || 2)
 const UPSTREAM_RETRY_ATTEMPTS = 3
@@ -485,6 +486,12 @@ function is4K(size) {
   return Boolean(match && Number(match[1]) * Number(match[2]) > MAX_1K_PIXELS)
 }
 
+// 4K 档：像素量超过 2K 预算。AIPixel 只提供到 2K，这类请求必须改走 AILink。
+function is4KTier(size) {
+  const match = /^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/.exec(size)
+  return Boolean(match && Number(match[1]) * Number(match[2]) > MAX_2K_PIXELS)
+}
+
 // Agent 工具可以按图指定尺寸。返回空字符串表示沿用任务自身的尺寸设置（含 auto / 非法值）。
 // 校验与规整规则对齐前端 src/lib/size.ts。
 function normalizeAgentImageSize(value) {
@@ -525,13 +532,18 @@ function isPixelApiUrl(baseUrl) {
 
 function getUpstreamConfig(size, profileId = '', requestedModel = '') {
   const isHighResolution = is4K(size)
-  const isAilink = profileId === 'default-ailink-image'
+  // AIPixel 只提供到 2K：4K 档一律改走 AILink，并使用 AILink 的 4K 模型。
+  const forceAilink = is4KTier(size) && profileId !== 'default-ailink-image'
+  const isAilink = profileId === 'default-ailink-image' || forceAilink
   const upstreamBaseUrl = isAilink
     ? (isHighResolution ? process.env.IMAGE_AILINK_4K_API_URL : process.env.IMAGE_AILINK_1K_API_URL)
     : (isHighResolution ? process.env.IMAGE_PIXEL_4K_API_URL : process.env.IMAGE_PIXEL_1K_API_URL)
     || (isHighResolution ? process.env.IMAGE_4K_API_URL : process.env.IMAGE_1K_API_URL)
     || process.env.API_URL || ''
   const baseUrl = upstreamBaseUrl.replace(/\/+$/, '')
+  const defaultModel = isAilink
+    ? (isHighResolution ? process.env.IMAGE_AILINK_4K_MODEL : process.env.IMAGE_AILINK_1K_MODEL) || 'gpt-image-2'
+    : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2.5-flare'
   return {
     baseUrl,
     isPixel: isPixelApiUrl(baseUrl),
@@ -540,9 +552,8 @@ function getUpstreamConfig(size, profileId = '', requestedModel = '') {
       : (isHighResolution ? process.env.IMAGE_PIXEL_4K_API_KEY : process.env.IMAGE_PIXEL_1K_API_KEY)
         || (isHighResolution ? process.env.IMAGE_4K_API_KEY : process.env.IMAGE_1K_API_KEY)
         || process.env.API_KEY || '',
-    model: requestedModel || (isAilink
-      ? (isHighResolution ? process.env.IMAGE_AILINK_4K_MODEL : process.env.IMAGE_AILINK_1K_MODEL) || 'gpt-image-2'
-      : (isHighResolution ? process.env.IMAGE_PIXEL_4K_MODEL : process.env.IMAGE_PIXEL_1K_MODEL) || 'gpt-image-2.5-flare'),
+    // 改走 AILink 时忽略请求携带的模型，避免把 AIPixel 的模型名发给 AILink。
+    model: forceAilink ? defaultModel : requestedModel || defaultModel,
   }
 }
 

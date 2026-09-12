@@ -1,5 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { calculateImageSize, normalizeCodexCliImageSize, prependCodexCliSizePrompt, stripInjectedCodexCliSizePrompt } from './size'
+import {
+  calculateImageSize,
+  is4KImageSize,
+  normalizeAgentImageSize,
+  normalizeCodexCliImageSize,
+  prependCodexCliSizePrompt,
+  stripInjectedCodexCliSizePrompt,
+} from './size'
+
+describe('is4KImageSize', () => {
+  it('treats anything above the 2K pixel budget as the 4K tier', () => {
+    expect(is4KImageSize('1024x1536')).toBe(false)
+    expect(is4KImageSize('1440x2160')).toBe(false)
+    expect(is4KImageSize('2048x2048')).toBe(false)
+    expect(is4KImageSize('2560x1440')).toBe(false)
+    expect(is4KImageSize('3840x1600')).toBe(true)
+    expect(is4KImageSize('3840x2160')).toBe(true)
+    expect(is4KImageSize('2880x2880')).toBe(true)
+    expect(is4KImageSize('auto')).toBe(false)
+  })
+})
+
+describe('normalizeAgentImageSize', () => {
+  it('keeps valid sizes, clamps oversized ones, and drops unsupported input', () => {
+    expect(normalizeAgentImageSize('3840x1600')).toBe('3840x1600')
+    expect(normalizeAgentImageSize('4096x1600')).toBe('3840x1488')
+    expect(normalizeAgentImageSize('1025x1537')).toBe('1024x1536')
+    expect(normalizeAgentImageSize('auto')).toBe('')
+    expect(normalizeAgentImageSize('4K')).toBe('')
+    expect(normalizeAgentImageSize(undefined)).toBe('')
+  })
+})
 
 describe('calculateImageSize', () => {
   it('uses common 16:9 display resolutions for the built-in tiers', () => {

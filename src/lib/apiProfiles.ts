@@ -19,6 +19,7 @@ import { isServerManagedApiConfigEnabled, shouldUseApiProxy } from './devProxy'
 import { normalizeReasoningEffort, normalizeStreamPartialImages, parseDefaultApiUrl } from './defaultApiUrl'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './importableConfigUrl'
+import { is4KImageSize } from './size'
 
 export const DEFAULT_PIXEL_BASE_URL = isServerManagedApiConfigEnabled() ? '' : 'https://ai-pixel.online/v1'
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
@@ -973,6 +974,20 @@ export function validateApiProfile(profile: ApiProfile): string | null {
   if (!profile.apiKey.trim() && !(isServerManagedApiConfigEnabled() && profile.apiProxy)) return '缺少 API Key'
   if (!profile.model.trim()) return '缺少模型 ID'
   return null
+}
+
+/**
+ * 服务端托管模式下 AIPixel 不提供 4K：超过 1K 像素预算的请求会被服务端改走 AILink 的 4K 模型。
+ * 详情页据此显示真实来源；返回 null 表示按原配置执行。
+ */
+export function getHighResolutionImageSource(settings: AppSettings, profileId: string | undefined, size: string) {
+  if (!isServerManagedApiConfigEnabled()) return null
+  if (profileId === DEFAULT_AILINK_PROFILE_ID) return null
+  if (!is4KImageSize(size)) return null
+
+  const ailink = settings.profiles.find((profile) => profile.id === DEFAULT_AILINK_PROFILE_ID)
+  if (!ailink) return null
+  return { profileName: ailink.name, model: ailink.model }
 }
 
 function isPixelImageModel(model: string): boolean {

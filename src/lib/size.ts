@@ -68,6 +68,12 @@ export function normalizeImageSize(size: string) {
   return `${width}x${height}`
 }
 
+/** 是否属于 4K 档：像素量超过 2K 预算（AIPixel 只提供到 2K）。 */
+export function is4KImageSize(size: string) {
+  const match = size.trim().match(SIZE_PATTERN)
+  return Boolean(match && Number(match[1]) * Number(match[2]) > TIER_PIXEL_BUDGET['2K'])
+}
+
 export function normalizeCodexCliImageSize(size: string) {
   const trimmed = size.trim()
   const match = trimmed.match(SIZE_PATTERN)

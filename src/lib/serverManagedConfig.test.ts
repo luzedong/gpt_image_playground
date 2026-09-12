@@ -90,6 +90,27 @@ describe('server-managed API configuration', () => {
     expect(normalizeSettings({ agentWebSearch: false }).agentWebSearch).toBe(true)
   })
 
+  it('reports AILink as the effective source for 4K image requests', async () => {
+    vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
+    vi.resetModules()
+
+    const { getHighResolutionImageSource, normalizeSettings } = await import('./apiProfiles')
+    const settings = normalizeSettings({
+      profiles: [
+        { id: 'default-openai', provider: 'openai', model: 'gpt-image-2.5-flare' },
+        { id: 'default-ailink-image', provider: 'openai', model: 'gpt-image-2' },
+      ],
+    })
+    const ailink = settings.profiles.find((profile) => profile.id === 'default-ailink-image')
+
+    expect(getHighResolutionImageSource(settings, 'default-openai', '3840x1600')).toEqual({
+      profileName: ailink?.name,
+      model: 'gpt-image-2',
+    })
+    expect(getHighResolutionImageSource(settings, 'default-openai', '1024x1536')).toBeNull()
+    expect(getHighResolutionImageSource(settings, 'default-ailink-image', '3840x1600')).toBeNull()
+  })
+
   it('preserves the selected server-managed Agent image profile', async () => {
     vi.stubEnv('VITE_SERVER_MANAGED_API_CONFIG', 'true')
     vi.resetModules()

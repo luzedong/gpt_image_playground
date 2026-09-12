@@ -330,3 +330,11 @@
 - 批量参数重写（`agentResponseState`）保留模型给出的尺寸，未指定的条目不再多出空字段。
 - 验证：`npm test -- --run`（37 个文件、571 项）与 `npm run build`、`node --check` 均通过；本地用假上游跑通真实服务端链路——`size: "3840x1600"` 时请求打到 `/pixel-4k/images/generations` 且请求体含 `"size":"3840x1600"`；`4096x1600` 被规整为 `3840x1488`。
 - 提交 `b5055fd` 已推送并部署：镜像 `gpt-image-playground:b5055fd`（`d176a38bf0ef`），容器 `4202f893610d`；容器内 `async-task-server.mjs` 已含新逻辑，task server 监听正常，公网 200，代理仍保持关闭。
+
+## 2026-09-12 4K 档改走 AILink
+
+- 背景：AIPixel 只提供到 2K，4K 只有 AILink 的 `gpt-image-2` 支持。此前 AIPixel 配置下的 4K 请求虽然切到 `IMAGE_PIXEL_4K_*`，但该槽位仍指向 ai-pixel，等于拿不到 4K。
+- 服务端 `getUpstreamConfig`：新增 `is4KTier(size)`（像素量 > 2K 预算 4,194,304），命中且当前不是 AILink 配置时强制改走 `IMAGE_AILINK_4K_*`，模型改用 `IMAGE_AILINK_4K_MODEL`（默认 `gpt-image-2`），忽略请求携带的 AIPixel 模型名。2K 及以下仍按原配置执行。
+- 前端 `getHighResolutionImageSource`（`apiProfiles.ts`）+ 详情页「来源」：4K 档显示真实生效的 AILink 配置与模型，而不是当前选中的 AIPixel 配置。`src/lib/size.ts` 新增 `is4KImageSize` 作为同一判定的前端实现。
+- 本地验证（假上游、无计费）：AIPixel + `3840x1600` → `/ailink-4k` + `gpt-image-2`；AIPixel + `2048x2048` → `/pixel-4k` + `gpt-image-2.5-flare`；AIPixel + `1024x1536` → `/pixel-1k` + `gpt-image-2.5-flare`；AILink + `3840x1600` → `/ailink-4k` + 请求模型。
+- `npm test -- --run`（37 个文件、574 项）与 `npm run build`、`node --check` 均通过。
