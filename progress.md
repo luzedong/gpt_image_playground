@@ -296,3 +296,9 @@
 - 本地验证：`npm test -- --run`（37 个文件、570 项）与 `npm run build` 均通过。
 - 提交 `a048911` 已推送并部署：镜像 `gpt-image-playground:a048911`（`103d97c668bf`），容器 `09e76321fd50`，公网 200，`upstream_proxy` 与 task server 监听均正常。
 - 线上产物确认：`assets/index-BTXdmL_l.js` 中已包含 `gpt-image-2.5-sunburst`。
+
+## 2026-09-12 提交后清空输入框改为默认开启
+
+- 画廊提交走 `submitTask`，仅在 `settings.clearInputAfterSubmit` 为真时清空提示词与参考图；Agent 对话路径为无条件清空，因此出现“对话会清、画廊不清”。
+- `normalizeSettings` 与 `DEFAULT_SETTINGS` 中该开关默认值由 `false` 改为 `true`。
+- 已有浏览器若已持久化 `false`，加载时仍按持久值生效，需要在「设置 → 习惯配置」手动打开一次。
