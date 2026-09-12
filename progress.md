@@ -309,3 +309,5 @@
 - 原因：`async-task-server.mjs` 在 `server.listen` 之前先执行 `cleanupTasks()` + `restoreTasks()`，而任务目录有 336 个文件、646MB（含内联图片），恢复耗时数十秒，期间 3000 端口无人监听。
 - 修复：把 `server.listen` 提到恢复之前，`cleanupTasks()` / `restoreTasks()` 改为在监听回调内异步执行；恢复期间新建任务不受影响。
 - 本地验证：临时目录放 300 个任务文件，启动 2 秒内 `GET /api-tasks/<id>?meta=1` 即返回 200；随后 `restoreTasks()` 仍会把 `queued` 任务重新入队执行。
+- 提交 `abea187` 已推送并部署（上一版 `e6fadf2` 的“提交后清空输入框默认开启”一并上线）：镜像 `gpt-image-playground:abea187`（`d21b1ded5287`），容器 `4fc4febabc6c`。
+- 线上回归验证：容器重建后逐秒探测 `/api-tasks/mtxnsicn7ogj3?meta=1`，t+2s 起持续返回 200（修复前有约 30 秒 502 空窗），日志无 502。
