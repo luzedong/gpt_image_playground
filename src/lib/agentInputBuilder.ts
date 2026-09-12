@@ -146,13 +146,18 @@ export async function buildAgentApiInput(options: BuildAgentApiInputOptions): Pr
   const input: unknown[] = []
   const rounds = getAgentRoundPath(options.conversation, options.currentRound.id)
   const currentRoundIndex = rounds.findIndex((round) => round.id === options.currentRound.id)
-  const previousRound = currentRoundIndex > 0 ? rounds[currentRoundIndex - 1] : null
+  const latestGeneratedRound = rounds
+    .slice(0, currentRoundIndex)
+    .reverse()
+    .find((round) => collectAgentRoundOutputImageSlots(round, options.tasks).some(Boolean)) ?? null
   const currentUserMessage = options.conversation.messages.find(
     (message) => message.id === options.currentRound.userMessageId,
   )
   const allowedImageIds = new Set<string>([
     ...options.currentRound.inputImageIds,
-    ...(previousRound ? collectAgentRoundOutputImageSlots(previousRound, options.tasks).filter((id): id is string => Boolean(id)) : []),
+    ...(latestGeneratedRound
+      ? collectAgentRoundOutputImageSlots(latestGeneratedRound, options.tasks).filter((id): id is string => Boolean(id))
+      : []),
     ...resolveAgentPromptImageReferences(currentUserMessage?.content ?? '', rounds, options.tasks),
   ])
 

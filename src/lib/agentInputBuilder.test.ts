@@ -424,16 +424,18 @@ describe('agent input builder', () => {
     expect(JSON.stringify(input[input.length - 1])).toContain('Tool-call budget: 2/2 used.')
   })
 
-  it('keeps current user images and only the previous round generated image', async () => {
+  it('keeps the latest generated image even when later rounds are text-only', async () => {
     const firstRound = round('round-1', 1, { userMessageId: 'user-round-1', inputImageIds: ['user-old'], outputTaskIds: ['task-1'] })
     const previousRound = round('round-2', 2, { userMessageId: 'user-round-2', inputImageIds: ['user-previous'], outputTaskIds: ['task-2'] })
-    const currentRound = round('round-3', 3, { userMessageId: 'user-round-3', inputImageIds: ['user-current'] })
+    const textRound = round('round-3', 3, { userMessageId: 'user-round-3' })
+    const currentRound = round('round-4', 4, { userMessageId: 'user-round-4', inputImageIds: ['user-current'] })
     const conv = conversation(
-      [firstRound, previousRound, currentRound],
+      [firstRound, previousRound, textRound, currentRound],
       [
         message(firstRound, 'first'),
         message(previousRound, 'second'),
-        message(currentRound, 'third'),
+        message(textRound, 'third'),
+        message(currentRound, 'fourth'),
       ],
     )
     const loaded: string[] = []
