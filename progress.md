@@ -283,3 +283,6 @@
 - 回归来源：`client_task_id` 由 `851f896` 引入，正则自 `f38335c` 未变，因此画廊模式自该版本起一直“服务端生成成功、前端轮询 404”。Agent 路由正则本就是 `[A-Za-z0-9_-]+`，不受影响。
 - 修复：查询路由改为 `[A-Za-z0-9_-]+`，与 agent 路由一致；`taskPath` 拼接仍无 `/`、`.`，无路径穿越风险。
 - 本地验证：临时目录启动服务端实例，base36 ID 任务返回 `200 {"status":"done"}`，未知 base36 ID 返回 `任务不存在`，编码后的路径穿越请求返回 404；`npm test -- --run` 570 项通过。
+- 提交 `48e67cd` 已推送；服务器构建镜像 `gpt-image-playground:48e67cd`（`8d0f53d56465`），容器切换为 `d923e9d5cd7a`。
+- 线上验证：`GET /api-tasks/mtxnsicn7ogj3?meta=1` 由 404 变为 `200 {"status":"done"}`，完整结果接口返回 200（约 3.4 MB）；此前两个失败任务（`mtxnsicn7ogj3`、`mtxnsn758rwz5`）现均为 `done`。
+- 附带观察：容器重启后 async task server 需要约 30 秒完成 `restoreTasks()` 扫描才监听 3000，期间 `/api-tasks*` 返回 502。该行为与本次改动无关，属既有启动特性。
