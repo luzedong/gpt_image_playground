@@ -329,3 +329,4 @@
 - AILink/AIPixel 档位仍由 `is4K(size)` 决定，因此模型给大尺寸时会自动切到 4K 上游。
 - 批量参数重写（`agentResponseState`）保留模型给出的尺寸，未指定的条目不再多出空字段。
 - 验证：`npm test -- --run`（37 个文件、571 项）与 `npm run build`、`node --check` 均通过；本地用假上游跑通真实服务端链路——`size: "3840x1600"` 时请求打到 `/pixel-4k/images/generations` 且请求体含 `"size":"3840x1600"`；`4096x1600` 被规整为 `3840x1488`。
+- 提交 `b5055fd` 已推送并部署：镜像 `gpt-image-playground:b5055fd`（`d176a38bf0ef`），容器 `4202f893610d`；容器内 `async-task-server.mjs` 已含新逻辑，task server 监听正常，公网 200，代理仍保持关闭。
