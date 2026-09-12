@@ -1789,7 +1789,8 @@ async function handlePutAgentAsset(req, res, id) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
-  const match = url.pathname.match(/^\/api-tasks\/([a-f0-9-]+)$/i)
+  // 前端本地任务 ID 是 base36（含 g-z），不能用十六进制正则，否则画廊轮询会 404。
+  const match = url.pathname.match(/^\/api-tasks\/([A-Za-z0-9_-]+)$/)
   const agentAssetMatch = url.pathname.match(/^\/api-agent-assets\/([a-f0-9]{64})$/)
   const agentProgressMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/progress$/)
   const agentEventsMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/events$/)

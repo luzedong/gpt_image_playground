@@ -275,3 +275,11 @@
 - 新增两个回归测试（显式引用会加载、未引用则不加载）。本地验证：`npm test -- --run`（37 个文件、570 项）与 `npm run build` 均通过。
 - 提交 `566940f` 已推送；服务器 `docker build -f deploy/Dockerfile -t gpt-image-playground:566940f .` 构建成功（`edfa535f0611`）。
 - 线上容器切换为 `566940f`，容器 ID `a21db2e2a5ac`，公网 200，启动日志确认 `upstream_proxy enabled host=172.17.0.1:7890`。
+
+## 2026-09-12 修复画廊轮询 404（Not Found）
+
+- 现象：画廊生图提示 `Not Found`。nginx 日志为 `POST /api-tasks 202` 之后紧跟 `GET /api-tasks/<id>?meta=1 404`。
+- 根因：`deploy/async-task-server.mjs` 的查询路由正则 `/^\/api-tasks\/([a-f0-9-]+)$/i` 只接受十六进制字符，但前端本地任务 ID 由 `Date.now().toString(36)` 生成（含 g–z），经 `client_task_id` 提交后成为服务端任务 ID，正则不匹配即落到兜底 `{"error":{"message":"Not Found"}}`。
+- 回归来源：`client_task_id` 由 `851f896` 引入，正则自 `f38335c` 未变，因此画廊模式自该版本起一直“服务端生成成功、前端轮询 404”。Agent 路由正则本就是 `[A-Za-z0-9_-]+`，不受影响。
+- 修复：查询路由改为 `[A-Za-z0-9_-]+`，与 agent 路由一致；`taskPath` 拼接仍无 `/`、`.`，无路径穿越风险。
+- 本地验证：临时目录启动服务端实例，base36 ID 任务返回 `200 {"status":"done"}`，未知 base36 ID 返回 `任务不存在`，编码后的路径穿越请求返回 404；`npm test -- --run` 570 项通过。
