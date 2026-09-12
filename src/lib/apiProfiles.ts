@@ -34,6 +34,9 @@ const DEFAULT_BASE_URL = isServerManagedApiConfigEnabled() ? '' : DEFAULT_API_UR
 const DEFAULT_API_KEY = isServerManagedApiConfigEnabled() ? '' : DEFAULT_API_URL_PATCH?.apiKey ?? RAW_DEFAULT_API_KEY
 export const DEFAULT_PIXEL_IMAGE_MODEL = 'gpt-image-2.5-flare'
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
+export const PIXEL_IMAGE_MODEL_SUNBURST = 'gpt-image-2.5-sunburst'
+/** 生图模型的可选项，设置页以下拉框展示，不提供自由输入。 */
+export const PIXEL_IMAGE_MODEL_PRESETS = [DEFAULT_IMAGES_MODEL, DEFAULT_PIXEL_IMAGE_MODEL, PIXEL_IMAGE_MODEL_SUNBURST]
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.6-luna'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
@@ -734,13 +737,14 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     normalizedProfiles = defaultProfiles.map((profile) => {
       const existing = normalizedProfiles.find((item) => item.id === profile.id)
       if (!existing) return profile
+      const existingModel = existing.model.trim()
       return {
         ...profile,
-        // AIPixel 模型由服务端强制更新；AILink 模型保留浏览器配置。
+        // AIPixel 只保留下拉框预设内的模型，其余旧值统一纠正为默认模型；AILink 保留浏览器配置。
         model: profile.id === DEFAULT_OPENAI_PROFILE_ID
-          ? DEFAULT_PIXEL_IMAGE_MODEL
-          : profile.apiMode === 'images' && existing.model.trim()
-            ? existing.model
+          ? PIXEL_IMAGE_MODEL_PRESETS.includes(existingModel) ? existingModel : DEFAULT_PIXEL_IMAGE_MODEL
+          : profile.apiMode === 'images' && existingModel
+            ? existingModel
             : profile.model,
         streamImages: existing.streamImages,
         streamPartialImages: existing.streamPartialImages,

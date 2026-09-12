@@ -286,3 +286,11 @@
 - 提交 `48e67cd` 已推送；服务器构建镜像 `gpt-image-playground:48e67cd`（`8d0f53d56465`），容器切换为 `d923e9d5cd7a`。
 - 线上验证：`GET /api-tasks/mtxnsicn7ogj3?meta=1` 由 404 变为 `200 {"status":"done"}`，完整结果接口返回 200（约 3.4 MB）；此前两个失败任务（`mtxnsicn7ogj3`、`mtxnsn758rwz5`）现均为 `done`。
 - 附带观察：容器重启后 async task server 需要约 30 秒完成 `restoreTasks()` 扫描才监听 3000，期间 `/api-tasks*` 返回 502。该行为与本次改动无关，属既有启动特性。
+
+## 2026-09-12 生图模型 ID 改为预设下拉框
+
+- `src/lib/apiProfiles.ts` 新增 `PIXEL_IMAGE_MODEL_SUNBURST = 'gpt-image-2.5-sunburst'` 与 `PIXEL_IMAGE_MODEL_PRESETS = ['gpt-image-2', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst']`。
+- 设置页「模型 ID」在 OpenAI + Images 场景改为下拉框（`SettingsModal.tsx`），不再自由输入；若历史值不在预设内，会作为额外选项保留在列表中，避免静默改写。Responses 文本模型、fal、自定义服务商仍保留输入框。
+- 服务端托管模式下 AIPixel 的强制纠正逻辑调整为：命中预设则保留用户选择，否则纠正为 `gpt-image-2.5-flare`；AILink 仍保留浏览器配置。
+- 服务端 `getUpstreamConfig` 使用请求携带的 `model`（仅在上游未提供时回退 env 默认值），因此下拉框选择会真正生效。
+- 本地验证：`npm test -- --run`（37 个文件、570 项）与 `npm run build` 均通过。
