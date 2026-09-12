@@ -311,3 +311,12 @@
 - 本地验证：临时目录放 300 个任务文件，启动 2 秒内 `GET /api-tasks/<id>?meta=1` 即返回 200；随后 `restoreTasks()` 仍会把 `queued` 任务重新入队执行。
 - 提交 `abea187` 已推送并部署（上一版 `e6fadf2` 的“提交后清空输入框默认开启”一并上线）：镜像 `gpt-image-playground:abea187`（`d21b1ded5287`），容器 `4fc4febabc6c`。
 - 线上回归验证：容器重建后逐秒探测 `/api-tasks/mtxnsicn7ogj3?meta=1`，t+2s 起持续返回 200（修复前有约 30 秒 502 空窗），日志无 502。
+
+## 2026-09-12 生图报 terminated：关闭失效的 7890 代理
+
+- 现象：AILink 任务 `mtxopfeh1nib7` 失败，`error: "terminated"`（undici 在连接被中途掐断时抛出的错误）。
+- 定位：服务端通过 `UPSTREAM_PROXY_URL=http://172.17.0.1:7890` 走 mihomo 代理。实测代理已失效：
+  - `curl -x http://172.17.0.1:7890 https://ai-pixel.online/v1/models` → `code=000`，5 秒被掐断（CONNECT 返回 200 后隧道静默断开）；`https://example.com` 同样失败，`http://example.com` 返回 502。
+  - 直连同一批地址正常：`ai-pixel.online` 401 / 0.77s，`direct.linkai.pics` 401 / 0.52s，`api.deepseek.com` 401 / 0.23s。
+- 处理：备份 `/etc/gpt-image-playground/api-config.env` 为 `api-config.env.bak-20260912-091017`，将 `UPSTREAM_PROXY_URL` 置空后重建容器。
+- 验证：容器启动日志不再输出 `upstream_proxy`；容器内 `fetch` 三个上游均为 401（可达）——ai-pixel 1069ms、linkai 545ms、deepseek 135ms；公网 200，任务路由 200。
