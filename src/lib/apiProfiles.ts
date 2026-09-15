@@ -818,7 +818,11 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     streamPartialImages: active.streamPartialImages,
     customProviders: isServerManagedApiConfigEnabled() ? [] : customProviders,
     providerOrder: normalizeProviderOrder(record.providerOrder, customProviders),
-    clearInputAfterSubmit: typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : true,
+    // 旧版本默认关闭，这里做一次性迁移把它打开；迁移过之后仍尊重用户手动关闭。
+    clearInputAfterSubmit: record.clearInputDefaultMigrated === true
+      ? typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : true
+      : true,
+    clearInputDefaultMigrated: true,
     persistInputOnRestart: typeof record.persistInputOnRestart === 'boolean' ? record.persistInputOnRestart : false,
     reuseTaskApiProfileTemporarily: typeof record.reuseTaskApiProfileTemporarily === 'boolean' ? record.reuseTaskApiProfileTemporarily : false,
     alwaysShowRetryButton: typeof record.alwaysShowRetryButton === 'boolean' ? record.alwaysShowRetryButton : false,
@@ -1403,6 +1407,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   profiles: createDefaultPixelProfiles(),
   activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
   clearInputAfterSubmit: true,
+  clearInputDefaultMigrated: true,
   persistInputOnRestart: false,
   reuseTaskApiProfileTemporarily: false,
   alwaysShowRetryButton: false,

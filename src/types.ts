@@ -105,6 +105,8 @@ export interface AppSettings {
   customProviders: CustomProviderDefinition[]
   providerOrder?: string[]
   clearInputAfterSubmit: boolean
+  /** 一次性迁移标记：旧版本该开关默认关闭，迁移后统一打开，之后以用户选择为准 */
+  clearInputDefaultMigrated?: boolean
   persistInputOnRestart: boolean
   reuseTaskApiProfileTemporarily: boolean
   alwaysShowRetryButton: boolean
