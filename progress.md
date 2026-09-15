@@ -383,3 +383,10 @@
 - 同时修正成功率口径：`outcome==='error'` 才算失败，排队/运行中的 `unknown` 不计入分母；空数据时看板给出「事件从本次部署开始采集 + 历史已回填」的提示。
 - 验证：线上回填 8 天（`{"type":"stats_backfill","days":8}`）；`range=7d` 返回 193 个任务、32 失败、成功率 83.4%，端到端 p50 57s / p90 320s / p95 433s；`range=24h` 8 个任务、成功率 100%、4 个时间桶。
 - 说明：`queueMs` / `upstreamMs` / `firstTokenMs` 属于新增指标，只有本次部署之后产生的数据，历史回填不包含。
+
+## 2026-09-15 看板视觉与单位优化 + 最近任务
+
+- `/api-stats` 增加 `recent`（按 `ts` 倒序取最近 10 条任务，并把同 `taskId` 的 `image_request` 里的 action/size 合并进来）。
+- `public/admin.html` 重做为深色管理后台风格：KPI 卡片、状态 pill（成功/失败/处理中）、趋势柱状图带时间标签、双列表格、等宽数字；单位从毫秒统一改成秒（`x.xs`，≥60s 取整）。
+- 新增「最近 10 条任务」表格：时间、任务 ID 缩略、类型、模型、动作、尺寸、耗时、状态、说明。
+- 提交 `93e06d3` 已部署：镜像 `gpt-image-playground:93e06d3`，容器 `ca71aee8256e`，`/admin.html` 200、`/api-stats` 返回 recent=8、公网 200。
