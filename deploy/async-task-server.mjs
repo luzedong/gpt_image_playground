@@ -2093,6 +2093,24 @@ async function handleStats(req, res, url) {
     byModel.set(key, item)
   }
 
+  const recent = [...taskEvents]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 10)
+    .map((event) => {
+      const image = imageEvents.find((item) => item.taskId === event.taskId)
+      return {
+        ts: event.ts,
+        taskId: event.taskId,
+        kind: event.kind || 'image',
+        model: event.model || null,
+        action: image?.action || null,
+        size: image?.size || null,
+        totalMs: event.totalMs,
+        outcome: event.outcome,
+        errorKind: event.errorKind || null,
+      }
+    })
+
   const failedTasks = taskEvents.filter((event) => event.outcome === 'error').length
   const succeededTasks = taskEvents.filter((event) => event.outcome === 'ok').length
   const ratedTasks = succeededTasks + failedTasks
@@ -2126,6 +2144,7 @@ async function handleStats(req, res, url) {
       .sort((a, b) => b.count - a.count)
       .map((item) => ({ key: item.key, count: item.count, p50Ms: percentile(item.durations, 50), p95Ms: percentile(item.durations, 95) })),
     errors: [...errorCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count })),
+    recent,
     live: {
       concurrency: CONCURRENCY,
       running: activeTasks.size,
