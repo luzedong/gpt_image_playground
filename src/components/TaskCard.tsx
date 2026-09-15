@@ -460,7 +460,9 @@ export default function TaskCard({
                 </svg>
               )}
               <span className={`text-xs ${isServerImageReady ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                {isServerImageReady ? '已生成，正在加载图片...' : '生成中...'}
+                {isServerImageReady
+                  ? '已生成，正在加载图片...'
+                  : task.serverTaskStatus === 'queued' ? '排队中...' : '生成中...'}
               </span>
             </div>
           )}
