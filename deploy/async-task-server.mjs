@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
@@ -42,6 +42,72 @@ const agentEventClients = new Map()
 const upstreamLocks = new Map()
 const AGENT_IMAGE_DIR = join(DATA_DIR, 'agent-images')
 const AGENT_ASSET_DIR = join(DATA_DIR, 'agent-assets')
+const STATS_DIR = join(DATA_DIR, 'stats')
+const STATS_RETENTION_DAYS = 14
+
+/** 看板用的结构化事件日志：按天一个 JSONL，避免把 docker logs 当数据源。 */
+function recordStat(event) {
+  void (async () => {
+    try {
+      await mkdir(STATS_DIR, { recursive: true })
+      const day = new Date().toISOString().slice(0, 10)
+      await appendFile(join(STATS_DIR, `${day}.jsonl`), `${JSON.stringify({ ts: Date.now(), ...event })}\n`, 'utf8')
+    } catch (error) {
+      console.error('写入统计事件失败', error instanceof Error ? error.message : String(error))
+    }
+  })()
+}
+
+/** 把上游错误归类，便于看板看失败分布。 */
+function classifyError(message) {
+  const text = String(message || '')
+  if (/concurrency limit/i.test(text)) return '上游并发限流'
+  if (/rate limit|too many requests/i.test(text)) return '上游限流'
+  if (/gateway routing budget/i.test(text)) return '上游路由预算耗尽'
+  if (/invalid image file or mode/i.test(text)) return '参考图被上游拒绝'
+  if (/content rejected|legal_error/i.test(text)) return '内容审核拒绝'
+  if (/格式不受支持/.test(text)) return '参考图格式不支持'
+  if (/terminated|fetch failed|socket|ECONNRESET|ECONNREFUSED|SSL_/i.test(text)) return '网络中断'
+  if (/timed out|timeout|超时/i.test(text)) return '超时'
+  if (/配置不完整/.test(text)) return '配置缺失'
+  return '其他'
+}
+
+function percentile(values, p) {
+  const clean = values.filter((value) => typeof value === 'number' && Number.isFinite(value)).sort((a, b) => a - b)
+  if (!clean.length) return null
+  return clean[Math.min(clean.length - 1, Math.max(0, Math.ceil((p / 100) * clean.length) - 1))]
+}
+
+function summarizeDurations(values) {
+  const clean = values.filter((value) => typeof value === 'number' && Number.isFinite(value))
+  if (!clean.length) return { count: 0, avg: null, p50: null, p90: null, p95: null, max: null }
+  return {
+    count: clean.length,
+    avg: Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length),
+    p50: percentile(clean, 50),
+    p90: percentile(clean, 90),
+    p95: percentile(clean, 95),
+    max: Math.max(...clean),
+  }
+}
+
+async function directorySize(dir) {
+  let total = 0
+  try {
+    for (const name of await readdir(dir)) {
+      try {
+        const info = await stat(join(dir, name))
+        if (info.isFile()) total += info.size
+      } catch {
+        // 忽略单个文件
+      }
+    }
+  } catch {
+    // 目录不存在时按 0 计
+  }
+  return total
+}
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload)
@@ -831,6 +897,21 @@ async function executeUpstreamRequest(task, config) {
     imageSource: result.imageSource,
     totalMs: Date.now() - requestStartedAt,
   }))
+  recordStat({
+    type: 'image_request',
+    taskId: task.id,
+    kind: task.kind || 'image',
+    profileId: task.profileId || null,
+    model: config.model,
+    action: isEdit ? 'edit' : 'generate',
+    size: task.params.size,
+    refCount: inputImages.length,
+    upstreamMs: responseReceivedAt - requestStartedAt,
+    bodyMs: payloadReadAt - responseReceivedAt,
+    downloadMs: result.imageDownloadDurationMs,
+    totalMs: Date.now() - requestStartedAt,
+    outcome: 'ok',
+  })
   return result
 }
 
@@ -1423,8 +1504,23 @@ async function executeAgentUpstream(task) {
     let streamedText = ''
     let thinkingText = ''
     let payload
+    const roundStartedAt = Date.now()
+    let firstDeltaAt = 0
+    const markFirstDelta = () => {
+      if (firstDeltaAt) return
+      firstDeltaAt = Date.now()
+      recordStat({
+        type: 'agent_first_token',
+        taskId: task.id,
+        kind: 'agent',
+        model: task.model || null,
+        roundIndex: responseRound + 1,
+        firstTokenMs: firstDeltaAt - roundStartedAt,
+      })
+    }
     try {
       payload = await callAgentUpstream(input, task.instructions, tools, async (delta) => {
+        markFirstDelta()
         thinkingText = ''
         streamedText += delta
         await progress.report({
@@ -1434,6 +1530,7 @@ async function executeAgentUpstream(task) {
           pendingImages: [],
         })
       }, async () => {
+        markFirstDelta()
         if (streamedText || thinkingText) return
         thinkingText = '正在思考...'
         await progress.report({
@@ -1599,6 +1696,8 @@ async function executeAgentUpstream(task) {
 }
 
 async function runTask(task) {
+  const queuedAt = task.createdAt || Date.now()
+  const startedAt = Date.now()
   activeTasks.add(task.id)
   try {
     task.status = 'running'
@@ -1626,6 +1725,17 @@ async function runTask(task) {
     task.updatedAt = task.finishedAt
     await saveTask(task)
     broadcastAgentEvent(task)
+    recordStat({
+      type: 'task',
+      taskId: task.id,
+      kind: task.kind || 'image',
+      profileId: task.profileId || null,
+      model: task.model || null,
+      queueMs: startedAt - queuedAt,
+      totalMs: task.finishedAt - startedAt,
+      outcome: task.status === 'done' ? 'ok' : 'error',
+      errorKind: task.status === 'error' ? classifyError(task.error) : null,
+    })
     if (startCaption) void startCaption()
     if (task.kind === 'agent') await unlink(agentContextPath(task.id)).catch(() => {})
   } catch (error) {
@@ -1674,6 +1784,16 @@ async function cleanupTasks() {
     } catch {
       // 忽略单个损坏或正在替换的任务文件。
     }
+  }
+  try {
+    const expiry = now - STATS_RETENTION_DAYS * 86400000
+    for (const name of await readdir(STATS_DIR)) {
+      if (!name.endsWith('.jsonl')) continue
+      const day = Date.parse(`${name.slice(0, 10)}T00:00:00.000Z`)
+      if (Number.isFinite(day) && day < expiry) await unlink(join(STATS_DIR, name)).catch(() => {})
+    }
+  } catch {
+    // 统计目录可能还没创建
   }
 }
 
@@ -1848,6 +1968,128 @@ async function handleCreateAgent(req, res) {
   }
 }
 
+async function readStatsEvents(sinceTs) {
+  const events = []
+  let names = []
+  try {
+    names = await readdir(STATS_DIR)
+  } catch {
+    return events
+  }
+  for (const name of names.filter((item) => item.endsWith('.jsonl')).sort()) {
+    let text = ''
+    try {
+      text = await readFile(join(STATS_DIR, name), 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const event = JSON.parse(line)
+        if (typeof event?.ts === 'number' && event.ts >= sinceTs) events.push(event)
+      } catch {
+        // 忽略损坏行
+      }
+    }
+  }
+  return events
+}
+
+async function handleStats(req, res, url) {
+  const adminToken = (process.env.ADMIN_TOKEN || '').trim()
+  if (!adminToken) {
+    json(res, 404, { error: { message: 'Not Found' } })
+    return
+  }
+  const provided = String(req.headers['x-admin-token'] || url.searchParams.get('token') || '')
+  if (provided !== adminToken) {
+    json(res, 401, { error: { message: '未授权' } })
+    return
+  }
+
+  const range = url.searchParams.get('range') || '24h'
+  const rangeMs = range === '30d' ? 30 * 86400000 : range === '7d' ? 7 * 86400000 : 24 * 3600000
+  const events = await readStatsEvents(Date.now() - rangeMs)
+  const taskEvents = events.filter((event) => event.type === 'task')
+  const imageEvents = events.filter((event) => event.type === 'image_request')
+  const firstTokenEvents = events.filter((event) => event.type === 'agent_first_token')
+
+  const errorCounts = new Map()
+  for (const event of taskEvents) {
+    if (event.outcome === 'ok') continue
+    const key = event.errorKind || '其他'
+    errorCounts.set(key, (errorCounts.get(key) || 0) + 1)
+  }
+
+  const bucketMs = rangeMs <= 24 * 3600000 ? 3600000 : 86400000
+  const buckets = new Map()
+  for (const event of [...taskEvents, ...imageEvents]) {
+    const bucketKey = new Date(Math.floor(event.ts / bucketMs) * bucketMs).toISOString()
+    const bucket = buckets.get(bucketKey) || { ts: bucketKey, tasks: 0, images: 0, errors: 0, durations: [] }
+    if (event.type === 'task') {
+      bucket.tasks += 1
+      if (event.outcome !== 'ok') bucket.errors += 1
+    } else {
+      bucket.images += 1
+    }
+    if (typeof event.totalMs === 'number') bucket.durations.push(event.totalMs)
+    buckets.set(bucketKey, bucket)
+  }
+
+  const byModel = new Map()
+  for (const event of imageEvents) {
+    const key = `${event.model || '未知'} · ${event.action || '-'}`
+    const item = byModel.get(key) || { key, count: 0, durations: [] }
+    item.count += 1
+    if (typeof event.totalMs === 'number') item.durations.push(event.totalMs)
+    byModel.set(key, item)
+  }
+
+  const failedTasks = taskEvents.filter((event) => event.outcome !== 'ok').length
+  json(res, 200, {
+    range,
+    generatedAt: new Date().toISOString(),
+    totals: {
+      tasks: taskEvents.length,
+      failedTasks,
+      successRate: taskEvents.length ? Number((((taskEvents.length - failedTasks) / taskEvents.length) * 100).toFixed(1)) : null,
+      images: imageEvents.length,
+      edits: imageEvents.filter((event) => event.action === 'edit').length,
+    },
+    latency: {
+      taskTotalMs: summarizeDurations(taskEvents.map((event) => event.totalMs)),
+      queueMs: summarizeDurations(taskEvents.map((event) => event.queueMs)),
+      upstreamMs: summarizeDurations(imageEvents.map((event) => event.upstreamMs)),
+      imageTotalMs: summarizeDurations(imageEvents.map((event) => event.totalMs)),
+      firstTokenMs: summarizeDurations(firstTokenEvents.map((event) => event.firstTokenMs)),
+    },
+    buckets: [...buckets.values()]
+      .sort((a, b) => (a.ts < b.ts ? -1 : 1))
+      .map((bucket) => ({
+        ts: bucket.ts,
+        tasks: bucket.tasks,
+        images: bucket.images,
+        errors: bucket.errors,
+        p95Ms: percentile(bucket.durations, 95),
+      })),
+    byModel: [...byModel.values()]
+      .sort((a, b) => b.count - a.count)
+      .map((item) => ({ key: item.key, count: item.count, p50Ms: percentile(item.durations, 50), p95Ms: percentile(item.durations, 95) })),
+    errors: [...errorCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count })),
+    live: {
+      concurrency: CONCURRENCY,
+      running: activeTasks.size,
+      queued: pendingTasks.length,
+      uptimeSec: Math.round(process.uptime()),
+      rssMb: Math.round(process.memoryUsage().rss / 1048576),
+      taskDirMb: Math.round((await directorySize(DATA_DIR)) / 1048576),
+      modelOverride: IMAGE_MODEL_OVERRIDE || null,
+      proxy: UPSTREAM_PROXY_URL || null,
+    },
+  })
+}
+
 async function handleCheckAgentAssets(req, res) {
   try {
     const body = JSON.parse(await readRequestBody(req))
@@ -1956,6 +2198,10 @@ const server = createServer(async (req, res) => {
     }
     // 保留默认返回完整结果，兼容已经打开的旧版前端；新版使用 meta=1 避免轮询携带图片。
     json(res, 200, publicTask(task, url.searchParams.get('meta') !== '1'))
+    return
+  }
+  if (req.method === 'GET' && url.pathname === '/api-stats') {
+    await handleStats(req, res, url)
     return
   }
   if (req.method === 'POST' && url.pathname === '/api-tasks') {

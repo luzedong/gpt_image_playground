@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>IMAGE · 运营看板</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 20px; font: 13px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f6f7f9; color: #1f2937; }
+      @media (prefers-color-scheme: dark) { body { background: #0b0f14; color: #e5e7eb; } .card, table, input, button { background: #131920 !important; color: inherit; } th, td { border-color: #263042 !important; } }
+      h1 { font-size: 16px; margin: 0 0 4px; }
+      .muted { color: #6b7280; font-size: 12px; }
+      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 14px 0; }
+      input, button { font: inherit; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+      button { cursor: pointer; }
+      button.active { border-color: #2563eb; color: #2563eb; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; }
+      .card b { display: block; font-size: 22px; font-weight: 600; margin-top: 2px; }
+      .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+      .panel h2 { font-size: 13px; margin: 0 0 10px; color: #6b7280; font-weight: 500; }
+      .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
+      .bar { flex: 1; min-width: 4px; background: #93c5fd; border-radius: 3px 3px 0 0; position: relative; }
+      .bar.err { background: #fca5a5; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef0f3; }
+      th { color: #6b7280; font-weight: 500; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <h1>IMAGE · 运营看板</h1>
+    <div class="muted" id="status">需要访问令牌</div>
+
+    <div class="row">
+      <input id="token" type="password" placeholder="ADMIN_TOKEN" style="min-width: 240px" />
+      <button id="load">加载</button>
+      <span class="muted">|</span>
+      <button data-range="24h" class="range active">24 小时</button>
+      <button data-range="7d" class="range">7 天</button>
+      <button data-range="30d" class="range">30 天</button>
+      <button id="refresh">刷新</button>
+    </div>
+
+    <div class="cards" id="cards"></div>
+    <div class="panel">
+      <h2>生成趋势（蓝＝生成数，红＝失败数）</h2>
+      <div class="bars" id="bars"></div>
+      <div class="muted" id="barsNote"></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h2>按模型 / 动作</h2><table id="models"></table></div>
+      <div class="panel"><h2>失败原因 Top</h2><table id="errors"></table></div>
+    </div>
+    <div class="panel"><h2>实时状态</h2><table id="live"></table></div>
+    <div class="panel"><h2>耗时（毫秒）</h2><table id="latency"></table></div>
+
+    <script>
+      const state = { range: localStorage.getItem('adminRange') || '24h' }
+      const $ = (id) => document.getElementById(id)
+      const token = () => $('token').value.trim() || localStorage.getItem('adminToken') || ''
+      const ms = (v) => (typeof v === 'number' ? Math.round(v) : '—')
+      const pct = (v) => (typeof v === 'number' ? v + '%' : '—')
+      const time = (iso) => new Date(iso).toLocaleString('zh-CN', { hour12: false })
+      $('token').value = localStorage.getItem('adminToken') || ''
+
+      function table(el, head, rows) {
+        el.innerHTML = '<tr>' + head.map((h) => '<th>' + h + '</th>').join('') + '</tr>'
+          + rows.map((row) => '<tr>' + row.map((cell) => '<td>' + cell + '</td>').join('') + '</tr>').join('')
+      }
+
+      function render(data) {
+        $('status').textContent = data.range + ' · 更新于 ' + time(data.generatedAt)
+        const t = data.totals
+        $('cards').innerHTML = [
+          ['任务数', t.tasks], ['成功率', pct(t.successRate)], ['失败', t.failedTasks],
+          ['生成图片', t.images], ['其中编辑', t.edits],
+          ['端到端 p50', ms(data.latency.taskTotalMs.p50) + 'ms'], ['端到端 p95', ms(data.latency.taskTotalMs.p95) + 'ms'],
+          ['上游 p95', ms(data.latency.upstreamMs.p95) + 'ms'], ['首字 p95', ms(data.latency.firstTokenMs.p95) + 'ms'],
+          ['队列中', data.live.queued], ['运行中', data.live.running], ['并发上限', data.live.concurrency],
+        ].map(([k, v]) => '<div class="card"><span class="muted">' + k + '</span><b>' + v + '</b></div>').join('')
+
+        const max = Math.max(1, ...data.buckets.map((b) => b.images + 0))
+        $('bars').innerHTML = data.buckets.map((b) => {
+          const h = Math.round((b.images / max) * 100)
+          const eh = b.errors ? Math.max(4, Math.round((b.errors / max) * 100)) : 0
+          return '<div class="bar" style="height:' + Math.max(2, h) + '%" title="' + time(b.ts) + ' 生成 ' + b.images + ' · 失败 ' + b.errors + '"></div>'
+            + (eh ? '<div class="bar err" style="height:' + eh + '%" title="失败 ' + b.errors + '"></div>' : '')
+        }).join('')
+        $('barsNote').textContent = data.buckets.length ? '共 ' + data.buckets.length + ' 个时间桶，峰值 ' + max + ' 张' : '暂无数据'
+
+        table($('models'), ['模型 · 动作', '数量', 'p50', 'p95'],
+          data.byModel.map((m) => [m.key, m.count, ms(m.p50Ms), ms(m.p95Ms)]))
+        table($('errors'), ['原因', '次数'], data.errors.map((e) => [e.key, e.count]))
+        table($('live'), ['项', '值'], [
+          ['并发上限 / 运行 / 排队', data.live.concurrency + ' / ' + data.live.running + ' / ' + data.live.queued],
+          ['任务目录', data.live.taskDirMb + ' MB'],
+          ['进程内存', data.live.rssMb + ' MB'],
+          ['运行时长', Math.round(data.live.uptimeSec / 3600) + ' 小时'],
+          ['模型覆盖', data.live.modelOverride || '未启用'],
+          ['上游代理', data.live.proxy || '未启用'],
+        ])
+        table($('latency'), ['指标', '样本', '平均', 'p50', 'p90', 'p95', '最大'], [
+          ['端到端', data.latency.taskTotalMs], ['排队', data.latency.queueMs],
+          ['上游请求', data.latency.upstreamMs], ['图片总计', data.latency.imageTotalMs],
+          ['Agent 首字', data.latency.firstTokenMs],
+        ].map(([k, s]) => [k, s.count, ms(s.avg), ms(s.p50), ms(s.p90), ms(s.p95), ms(s.max)]))
+      }
+
+      async function load() {
+        const key = token()
+        if (!key) { $('status').textContent = '请先填写 ADMIN_TOKEN'; return }
+        localStorage.setItem('adminToken', key)
+        $('status').textContent = '加载中…'
+        try {
+          const res = await fetch('/api-stats?range=' + state.range, { headers: { 'x-admin-token': key }, cache: 'no-store' })
+          if (!res.ok) { $('status').textContent = res.status === 401 ? '令牌不正确' : '读取失败：HTTP ' + res.status; return }
+          render(await res.json())
+        } catch (err) {
+          $('status').textContent = '请求失败：' + err.message
+        }
+      }
+
+      $('load').onclick = load
+      $('refresh').onclick = load
+      document.querySelectorAll('.range').forEach((btn) => {
+        if (btn.dataset.range === state.range) { document.querySelectorAll('.range').forEach((b) => b.classList.remove('active')); btn.classList.add('active') }
+        btn.onclick = () => {
+          document.querySelectorAll('.range').forEach((b) => b.classList.remove('active'))
+          btn.classList.add('active')
+          state.range = btn.dataset.range
+          localStorage.setItem('adminRange', state.range)
+          load()
+        }
+      })
+      if (token()) load()
+    </script>
+  </body>
+</html>
