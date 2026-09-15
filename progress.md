@@ -363,3 +363,15 @@
 - 根因：`src/lib/serverManagedAgentApi.ts` 的 `prepareServerManagedAgentInput` 依赖 `hashDataUrl`，而 `crypto.subtle` 仅在安全上下文可用。用 `http://223.109.200.25:5173`（非 localhost 的 http）打开时 `hashDataUrl` 返回 `fallback-*`，原代码直接 `return input` —— **跳过了整个参考图归一化（JPEG 95 转换）与资产上传**，原始文件（手机相册常见 HEIC/大图）被内联发给服务端并转发上游，被 Adobe 拒绝。
 - 修复：`fallback-` 与 `/api-agent-assets/check` 不可用两条降级分支改为返回已归一化的 `normalizedInput`，只是不做资产复用；另外服务端在编辑前校验 MIME，非 PNG/JPEG/WebP 直接抛「参考图格式不受支持」而不是把上游的 Invalid image file 透给用户。
 - 验证：`npm test -- --run`（574 项）、`npm run build`、`node --check` 均通过。
+
+## 2026-09-15 运营看板 P0（结构化事件 + /api-stats + admin.html）
+
+- 埋点：服务端把事件写入 `/var/lib/gpt-image-playground/tasks/stats/<日期>.jsonl`（保留 14 天，随 cleanupTasks 清理）：
+  - `image_request`：taskId / kind / profileId / model / action / size / refCount / upstreamMs / bodyMs / downloadMs / totalMs
+  - `task`：queueMs（入队→执行）/ totalMs / outcome / errorKind（`classifyError` 归类上游错误）
+  - `agent_first_token`：Agent 每轮首字耗时
+- 接口：`GET /api-stats?range=24h|7d|30d`，用 `ADMIN_TOKEN` 校验（请求头 `x-admin-token` 或 `?token=`）；未设置 `ADMIN_TOKEN` 时直接 404。返回总量/成功率、耗时分位（端到端、排队、上游、首字）、按模型·动作分组、失败原因 Top、时间桶趋势、实时状态（并发/运行/排队、任务目录体积、进程内存、模型覆盖、代理）。
+- 页面：`public/admin.html`（`/admin.html`），原生 JS + CSS 柱状图，不引图表库；令牌存 localStorage。
+- nginx：`/api-stats` 反代放在 `# BEGIN API PROXY` 区块之外，避免 ENABLE_API_PROXY=false 时被整段删除。
+- 顺带修掉一个长期问题：镜像内 `public/` 复制的静态文件权限是 600，导致 `/manifest.webmanifest` 一直 403；Dockerfile 增加 `RUN chmod -R a+rX /usr/share/nginx/html`。
+- 部署验证：`/admin.html` 200、`/manifest.webmanifest` 200、`/api-stats` 无令牌 401 / 带令牌 200、公网 200。
