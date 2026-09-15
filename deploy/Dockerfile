@@ -66,6 +66,8 @@ ENV ASYNC_TASK_DATA_DIR=/var/lib/gpt-image-playground/tasks
 ENV ASYNC_TASK_CONCURRENCY=2
 
 COPY --from=build /app/dist /usr/share/nginx/html
+# 构建上下文里的文件权限可能是 600（nginx worker 读不了，会 403），统一放开读权限。
+RUN chmod -R a+rX /usr/share/nginx/html
 COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --chmod=755 deploy/migrate-api-env.envsh /docker-entrypoint.d/05-migrate-api-env.envsh
 COPY --chmod=755 deploy/inject-api-url.sh /docker-entrypoint.d/40-inject-api-url.sh
