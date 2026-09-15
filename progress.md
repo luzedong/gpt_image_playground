@@ -375,3 +375,11 @@
 - nginx：`/api-stats` 反代放在 `# BEGIN API PROXY` 区块之外，避免 ENABLE_API_PROXY=false 时被整段删除。
 - 顺带修掉一个长期问题：镜像内 `public/` 复制的静态文件权限是 600，导致 `/manifest.webmanifest` 一直 403；Dockerfile 增加 `RUN chmod -R a+rX /usr/share/nginx/html`。
 - 部署验证：`/admin.html` 200、`/manifest.webmanifest` 200、`/api-stats` 无令牌 401 / 带令牌 200、公网 200。
+
+## 2026-09-15 看板历史数据回填
+
+- 问题：看板上线后各时间段都是空的——事件只从部署那一刻开始采集，之前的任务没有记录。
+- 修复：新增 `backfillStatsFromTasks()`，服务端首次启动（`stats/.backfilled` 标记不存在时）扫描 `tasks/*.json`，按天写出 `task` 事件（ts=createdAt、totalMs=finishedAt-createdAt、outcome、errorKind 归类），只回填一次；启动顺序改为「先监听 → 清理 → 恢复任务 → 回填」。
+- 同时修正成功率口径：`outcome==='error'` 才算失败，排队/运行中的 `unknown` 不计入分母；空数据时看板给出「事件从本次部署开始采集 + 历史已回填」的提示。
+- 验证：线上回填 8 天（`{"type":"stats_backfill","days":8}`）；`range=7d` 返回 193 个任务、32 失败、成功率 83.4%，端到端 p50 57s / p90 320s / p95 433s；`range=24h` 8 个任务、成功率 100%、4 个时间桶。
+- 说明：`queueMs` / `upstreamMs` / `firstTokenMs` 属于新增指标，只有本次部署之后产生的数据，历史回填不包含。
