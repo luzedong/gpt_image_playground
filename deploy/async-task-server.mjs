@@ -1468,6 +1468,9 @@ async function executeAgentImage(task, toolCallId, prompt, references, metadata 
   const params = { ...task.params, n: 1, ...(metadata.size ? { size: metadata.size } : {}) }
   const startedAt = Date.now()
   const result = await executeUpstream({
+    // 带上 Agent 任务标识，统计事件才能把每张图关联回对话轮次。
+    id: task.id,
+    kind: 'agent',
     params,
     prompt: cleanPrompt,
     inputImages: references,
