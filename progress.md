@@ -390,3 +390,11 @@
 - `public/admin.html` 重做为深色管理后台风格：KPI 卡片、状态 pill（成功/失败/处理中）、趋势柱状图带时间标签、双列表格、等宽数字；单位从毫秒统一改成秒（`x.xs`，≥60s 取整）。
 - 新增「最近 10 条任务」表格：时间、任务 ID 缩略、类型、模型、动作、尺寸、耗时、状态、说明。
 - 提交 `93e06d3` 已部署：镜像 `gpt-image-playground:93e06d3`，容器 `ca71aee8256e`，`/admin.html` 200、`/api-stats` 返回 recent=8、公网 200。
+
+## 2026-09-15 最近任务区分「Agent 对话 / Agent 生图」
+
+- `/api-stats` 的 `recent` 增加 `imageCount`：优先取同一 `taskId` 的 `image_request` 条数，否则取任务自身 `result.images` 数量。
+- `task` 事件（运行中落盘）与历史回填都补上 `imageCount`；Agent 的图片生成任务因此能区分「纯对话轮」（0 张）和「调用生图工具的轮次」（≥1 张）。
+- 看板最近任务表新增「图」列，类型列显示为 `图片 / Agent·生图 / Agent·对话`；无图时动作和尺寸显示 `—`，并给该表加了横向滚动。
+- 为让历史数据也带上 `imageCount`，部署前重建了 `stats` 目录（仅统计文件，重新回填 8 天）。
+- 提交 `84c789d` 已部署：镜像 `gpt-image-playground:84c789d`，容器 `77288d2a8612`。
