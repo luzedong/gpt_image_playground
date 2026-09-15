@@ -1731,6 +1731,7 @@ async function runTask(task) {
       kind: task.kind || 'image',
       profileId: task.profileId || null,
       model: task.model || null,
+      imageCount: Array.isArray(task.result?.images) ? task.result.images.length : 0,
       queueMs: startedAt - queuedAt,
       totalMs: task.finishedAt - startedAt,
       outcome: task.status === 'done' ? 'ok' : 'error',
@@ -1998,6 +1999,7 @@ async function backfillStatsFromTasks() {
         kind: task.kind || 'image',
         profileId: task.profileId || null,
         model: task.model || null,
+        imageCount: Array.isArray(task.result?.images) ? task.result.images.length : 0,
         totalMs: task.finishedAt ? Math.max(0, task.finishedAt - task.createdAt) : null,
         outcome: task.status === 'done' ? 'ok' : task.status === 'error' ? 'error' : 'unknown',
         errorKind: task.error ? classifyError(task.error) : null,
@@ -2093,16 +2095,26 @@ async function handleStats(req, res, url) {
     byModel.set(key, item)
   }
 
+  const imagesByTask = new Map()
+  for (const image of imageEvents) {
+    if (!image.taskId) continue
+    const list = imagesByTask.get(image.taskId) || []
+    list.push(image)
+    imagesByTask.set(image.taskId, list)
+  }
   const recent = [...taskEvents]
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 10)
     .map((event) => {
-      const image = imageEvents.find((item) => item.taskId === event.taskId)
+      const images = imagesByTask.get(event.taskId) || []
+      const image = images[0]
+      const imageCount = images.length || (typeof event.imageCount === 'number' ? event.imageCount : 0)
       return {
         ts: event.ts,
         taskId: event.taskId,
         kind: event.kind || 'image',
         model: event.model || null,
+        imageCount,
         action: image?.action || null,
         size: image?.size || null,
         totalMs: event.totalMs,
