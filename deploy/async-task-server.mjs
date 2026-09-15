@@ -1968,6 +1968,53 @@ async function handleCreateAgent(req, res) {
   }
 }
 
+/** 首次启动时把已有任务文件回填成统计事件，让看板立刻有历史数据（只做一次）。 */
+async function backfillStatsFromTasks() {
+  const marker = join(STATS_DIR, '.backfilled')
+  try {
+    await access(marker)
+    return
+  } catch {
+    // 还没回填过，继续
+  }
+  try {
+    await mkdir(STATS_DIR, { recursive: true })
+    const byDay = new Map()
+    for (const name of await readdir(DATA_DIR)) {
+      if (!name.endsWith('.json') || name.endsWith('.progress.json') || name.endsWith('.context.json')) continue
+      let task
+      try {
+        task = JSON.parse(await readFile(join(DATA_DIR, name), 'utf8'))
+      } catch {
+        continue
+      }
+      if (!task?.createdAt) continue
+      const day = new Date(task.createdAt).toISOString().slice(0, 10)
+      const events = byDay.get(day) || []
+      events.push({
+        ts: task.createdAt,
+        type: 'task',
+        taskId: task.id,
+        kind: task.kind || 'image',
+        profileId: task.profileId || null,
+        model: task.model || null,
+        totalMs: task.finishedAt ? Math.max(0, task.finishedAt - task.createdAt) : null,
+        outcome: task.status === 'done' ? 'ok' : task.status === 'error' ? 'error' : 'unknown',
+        errorKind: task.error ? classifyError(task.error) : null,
+        backfilled: true,
+      })
+      byDay.set(day, events)
+    }
+    await Promise.all([...byDay].map(([day, events]) =>
+      writeFile(join(STATS_DIR, `${day}.jsonl`), `${events.map((event) => JSON.stringify(event)).join('\n')}\n`, 'utf8'),
+    ))
+    await writeFile(marker, new Date().toISOString(), 'utf8')
+    console.log(JSON.stringify({ type: 'stats_backfill', days: byDay.size }))
+  } catch (error) {
+    console.error('回填统计数据失败', error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function readStatsEvents(sinceTs) {
   const events = []
   let names = []
@@ -2017,7 +2064,7 @@ async function handleStats(req, res, url) {
 
   const errorCounts = new Map()
   for (const event of taskEvents) {
-    if (event.outcome === 'ok') continue
+    if (event.outcome !== 'error') continue
     const key = event.errorKind || '其他'
     errorCounts.set(key, (errorCounts.get(key) || 0) + 1)
   }
@@ -2029,7 +2076,7 @@ async function handleStats(req, res, url) {
     const bucket = buckets.get(bucketKey) || { ts: bucketKey, tasks: 0, images: 0, errors: 0, durations: [] }
     if (event.type === 'task') {
       bucket.tasks += 1
-      if (event.outcome !== 'ok') bucket.errors += 1
+      if (event.outcome === 'error') bucket.errors += 1
     } else {
       bucket.images += 1
     }
@@ -2046,14 +2093,16 @@ async function handleStats(req, res, url) {
     byModel.set(key, item)
   }
 
-  const failedTasks = taskEvents.filter((event) => event.outcome !== 'ok').length
+  const failedTasks = taskEvents.filter((event) => event.outcome === 'error').length
+  const succeededTasks = taskEvents.filter((event) => event.outcome === 'ok').length
+  const ratedTasks = succeededTasks + failedTasks
   json(res, 200, {
     range,
     generatedAt: new Date().toISOString(),
     totals: {
       tasks: taskEvents.length,
       failedTasks,
-      successRate: taskEvents.length ? Number((((taskEvents.length - failedTasks) / taskEvents.length) * 100).toFixed(1)) : null,
+      successRate: ratedTasks ? Number(((succeededTasks / ratedTasks) * 100).toFixed(1)) : null,
       images: imageEvents.length,
       edits: imageEvents.filter((event) => event.action === 'edit').length,
     },
@@ -2231,6 +2280,7 @@ server.listen(3000, '127.0.0.1', () => {
   void (async () => {
     await cleanupTasks()
     await restoreTasks()
+    await backfillStatsFromTasks()
   })().catch((error) => console.error('恢复历史任务失败', error))
 })
 setInterval(() => void cleanupTasks(), 6 * 60 * 60 * 1000)

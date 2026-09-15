@@ -90,7 +90,9 @@
           return '<div class="bar" style="height:' + Math.max(2, h) + '%" title="' + time(b.ts) + ' 生成 ' + b.images + ' · 失败 ' + b.errors + '"></div>'
             + (eh ? '<div class="bar err" style="height:' + eh + '%" title="失败 ' + b.errors + '"></div>' : '')
         }).join('')
-        $('barsNote').textContent = data.buckets.length ? '共 ' + data.buckets.length + ' 个时间桶，峰值 ' + max + ' 张' : '暂无数据'
+        $('barsNote').textContent = data.buckets.length
+          ? '共 ' + data.buckets.length + ' 个时间桶，峰值 ' + max + ' 张'
+          : (t.tasks === 0 ? '该区间没有任务记录。事件从本次部署开始采集，历史任务会在服务端首次启动时回填一次。' : '该区间没有时间桶')
 
         table($('models'), ['模型 · 动作', '数量', 'p50', 'p95'],
           data.byModel.map((m) => [m.key, m.count, ms(m.p50Ms), ms(m.p95Ms)]))
