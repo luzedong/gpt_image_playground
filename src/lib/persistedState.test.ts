@@ -112,10 +112,10 @@ describe('persisted state codec', () => {
     expect(migratePersistedState('invalid', 1)).toBe('invalid')
   })
 
-  it('opens the Agent workspace after the homepage default migration', () => {
-    const migrated = migratePersistedState({ appMode: 'gallery' }, 3) as { appMode: string }
-
-    expect(migrated.appMode).toBe('agent')
+  it('opens the gallery after the homepage default migration', () => {
+    // v6 起默认落地页由「对话」改成「画廊」，旧版本升级上来也统一迁移一次。
+    expect((migratePersistedState({ appMode: 'agent' }, 5) as { appMode: string }).appMode).toBe('gallery')
+    expect((migratePersistedState({ appMode: 'gallery' }, 3) as { appMode: string }).appMode).toBe('gallery')
   })
 
   it('clears old input drafts when upgrading persisted state', () => {

@@ -503,7 +503,7 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Mode
-      appMode: 'agent',
+      appMode: 'gallery',
       setAppMode: (appMode) => {
         if (appMode === 'gallery') {
           const state = get()
@@ -1037,7 +1037,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'gpt-image-playground',
-      version: 5,
+      version: 6,
       migrate: migratePersistedState,
       partialize: getPersistedState,
       merge: mergePersistedState,

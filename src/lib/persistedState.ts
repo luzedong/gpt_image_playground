@@ -130,6 +130,8 @@ export function migratePersistedState(persistedState: unknown, version?: number)
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
   }
   if ((version ?? 0) < 4) migrated.appMode = 'agent'
+  // v6：默认落地页从「对话」改成「画廊」，已存在的用户也统一迁移一次。
+  if ((version ?? 0) < 6) migrated.appMode = 'gallery'
   if ((version ?? 0) < 5) {
     if (isRecord(migrated.settings)) {
       migrated.settings = { ...migrated.settings, persistInputOnRestart: false }
