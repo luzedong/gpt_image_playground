@@ -443,7 +443,7 @@ export default function DetailModal() {
   return (
     <div
       data-no-drag-select
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4"
       onClick={() => setDetailTaskId(null)}
     >
       <div className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-md animate-overlay-in" />
@@ -452,10 +452,10 @@ export default function DetailModal() {
         className="relative bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border border-white/50 dark:border-white/[0.08] rounded-2xl sm:rounded-3xl shadow-[0_8px_40px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_40px_rgb(0,0,0,0.4)] max-w-4xl w-full min-w-0 max-h-[90vh] overflow-hidden flex flex-col md:flex-row z-10 ring-1 ring-black/5 dark:ring-white/10 animate-modal-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-12 items-center justify-end px-2 md:hidden">
+        <div className="relative z-30 flex h-14 items-center justify-end px-3 md:hidden">
           <button
             onClick={() => setDetailTaskId(null)}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.06]"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition active:scale-95 hover:bg-gray-200 dark:bg-white/[0.08] dark:text-gray-200 dark:hover:bg-white/[0.14]"
             aria-label="关闭"
           >
             <CloseIcon className="w-5 h-5" />
@@ -1083,8 +1083,14 @@ export default function DetailModal() {
               title={task.isFavorite ? '编辑收藏夹' : '收藏任务'}
             >
               <svg className="w-5 h-5" fill={task.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
               </svg>
+            </button>
+            <button
+              onClick={() => setDetailTaskId(null)}
+              className="col-span-2 sm:hidden flex items-center justify-center rounded-xl bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]"
+            >
+              关闭
             </button>
           </div>
         </div>
