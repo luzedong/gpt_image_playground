@@ -1,5 +1,6 @@
 import type { ApiProfile } from '../types'
 import { normalizeImageDataUrlForApi } from './canvasImage'
+import { blobToDataUrl } from './dataUrl'
 import type { CallApiOptions, CallApiResult } from './imageApiShared'
 
 type ServerTaskResponse = {
@@ -34,11 +35,23 @@ async function fetchTask(taskId: string, signal: AbortSignal, includeResult = fa
   return payload
 }
 
-function ensureResult(payload: ServerTaskResponse): CallApiResult {
-  if (!payload.result || !Array.isArray(payload.result.images) || payload.result.images.length === 0) {
+async function ensureResult(payload: ServerTaskResponse, signal?: AbortSignal): Promise<CallApiResult> {
+  const result = payload.result
+  if (!result || !Array.isArray(result.images) || result.images.length === 0) {
     throw new Error('服务端任务完成，但没有返回图片')
   }
-  return payload.result
+  // 服务端现在只回图片 URL，这里按需下载成 dataURL（少传 33% 的 base64，且不用解析大 JSON）。
+  // 旧版服务端直接返回 dataURL 字符串，保留兼容。
+  const first = (result.images as unknown[])[0]
+  if (typeof first === 'string') return result
+  const images = await Promise.all((result.images as unknown[]).map(async (item) => {
+    const imageUrl = typeof item === 'object' && item !== null ? (item as { imageUrl?: string }).imageUrl : ''
+    if (!imageUrl) throw new Error('服务端任务完成，但没有返回图片')
+    const response = await fetch(`${import.meta.env.BASE_URL}${imageUrl.replace(/^\//, '')}`, { cache: 'no-store', signal })
+    if (!response.ok) throw new Error(`下载生成图片失败：HTTP ${response.status}`)
+    return blobToDataUrl(await response.blob(), 'image/png')
+  }))
+  return { ...result, images }
 }
 
 export async function callServerManagedImageApi(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
@@ -76,12 +89,12 @@ export async function callServerManagedImageApi(opts: CallApiOptions, profile: A
       if (payload.status) opts.onServerTaskStatus?.(payload.status)
       if (payload.status === 'done') {
         // 兼容尚未更新的服务端：旧接口会在状态响应中直接带 result。
-        if (payload.result) return ensureResult(payload)
+        if (payload.result) return await ensureResult(payload, opts.signal)
         const resultController = new AbortController()
         const resultTimeoutId = setTimeout(() => resultController.abort(), 120_000)
         try {
           const resultPayload = await fetchTask(taskId, resultController.signal, true)
-          return ensureResult(resultPayload)
+          return await ensureResult(resultPayload, opts.signal)
         } finally {
           clearTimeout(resultTimeoutId)
         }

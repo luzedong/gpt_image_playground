@@ -392,10 +392,13 @@ async function handleAgentImage(req, res, taskId, index) {
 }
 
 function publicTask(task, includeResult = false) {
-  const result = task.kind === 'agent' && task.result
+  // 结果里的图片统一改成 URL：客户端按需下载二进制，避免 base64 塞进 JSON（体积多 33%，
+  // 解析也慢）。画廊任务和 Agent 任务用各自的图片接口。
+  const result = task.result && Array.isArray(task.result.images)
     ? {
         ...task.result,
         images: task.result.images.map((image, index) => {
+          if (task.kind !== 'agent') return { imageUrl: `/api-tasks/${task.id}/images/${index}` }
           const { dataUrl: _dataUrl, ...metadata } = image
           return { ...metadata, imageUrl: `/api-agent-tasks/${task.id}/images/${index}` }
         }),
@@ -2191,6 +2194,27 @@ async function handleStats(req, res, url) {
   })
 }
 
+async function handleTaskImage(req, res, taskId, index) {
+  const task = await loadTask(taskId)
+  const dataUrl = task?.kind !== 'agent' ? task?.result?.images?.[Number(index)] : null
+  if (typeof dataUrl !== 'string') {
+    json(res, 404, { error: { message: '图片不存在' } })
+    return
+  }
+  const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/i.exec(dataUrl)
+  if (!match) {
+    json(res, 404, { error: { message: '图片不存在' } })
+    return
+  }
+  const body = match[2] ? Buffer.from(match[3], 'base64') : Buffer.from(decodeURIComponent(match[3]), 'utf8')
+  res.writeHead(200, {
+    'Content-Type': match[1] || 'image/png',
+    'Content-Length': body.length,
+    'Cache-Control': 'private, max-age=3600',
+  })
+  res.end(body)
+}
+
 async function handleCheckAgentAssets(req, res) {
   try {
     const body = JSON.parse(await readRequestBody(req))
@@ -2274,6 +2298,11 @@ const server = createServer(async (req, res) => {
     return
   }
   const agentImageMatch = url.pathname.match(/^\/api-agent-tasks\/([A-Za-z0-9_-]+)\/images\/(\d+)$/)
+  const taskImageMatch = url.pathname.match(/^\/api-tasks\/([A-Za-z0-9_-]+)\/images\/(\d+)$/)
+  if (req.method === 'GET' && taskImageMatch) {
+    await handleTaskImage(req, res, taskImageMatch[1], taskImageMatch[2])
+    return
+  }
   if (req.method === 'GET' && agentImageMatch) {
     await handleAgentImage(req, res, agentImageMatch[1], agentImageMatch[2])
     return
