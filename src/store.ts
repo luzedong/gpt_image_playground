@@ -1279,6 +1279,8 @@ function getTaskApiProfileName(task: TaskRecord) {
 }
 
 function isNetworkRecoverableError(err: unknown) {
+  // 服务端已经判定任务失败（例如上游 408/429），不能再当网络抖动重试。
+  if (err instanceof Error && err.name === 'ServerTaskError') return false
   if (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') return true
   const message = err instanceof Error ? err.message : String(err)
   return /abort|network|failed to fetch|fetch failed|load failed|timeout|超时|连接|断开|中断|HTTP (?:408|425|429|5\d\d)/i.test(message)

@@ -35,6 +35,16 @@ async function fetchTask(taskId: string, signal: AbortSignal, includeResult = fa
   return payload
 }
 
+/**
+ * 服务端已经给出终态失败（任务 status=error）。这不能再当成网络抖动去重试，
+ * 否则恢复逻辑会每 10 秒重排一次，任务永远停在“运行中”，耗时一直涨。
+ */
+function serverTaskFailedError(payload: ServerTaskResponse) {
+  const error = new Error(getErrorMessage(payload, '服务端异步生图失败'))
+  error.name = 'ServerTaskError'
+  return error
+}
+
 async function ensureResult(payload: ServerTaskResponse, signal?: AbortSignal): Promise<CallApiResult> {
   const result = payload.result
   if (!result || !Array.isArray(result.images) || result.images.length === 0) {
@@ -99,7 +109,7 @@ export async function callServerManagedImageApi(opts: CallApiOptions, profile: A
           clearTimeout(resultTimeoutId)
         }
       }
-      if (payload.status === 'error') throw new Error(getErrorMessage(payload, '服务端异步生图失败'))
+      if (payload.status === 'error') throw serverTaskFailedError(payload)
     } finally {
       clearTimeout(timeoutId)
     }
