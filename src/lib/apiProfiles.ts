@@ -823,6 +823,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
       ? typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : true
       : true,
     clearInputDefaultMigrated: true,
+    gallerySubmitMode: record.gallerySubmitMode === 'agent' ? 'agent' : 'image',
     persistInputOnRestart: typeof record.persistInputOnRestart === 'boolean' ? record.persistInputOnRestart : false,
     reuseTaskApiProfileTemporarily: typeof record.reuseTaskApiProfileTemporarily === 'boolean' ? record.reuseTaskApiProfileTemporarily : false,
     alwaysShowRetryButton: typeof record.alwaysShowRetryButton === 'boolean' ? record.alwaysShowRetryButton : false,
@@ -1408,6 +1409,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
   clearInputAfterSubmit: true,
   clearInputDefaultMigrated: true,
+  gallerySubmitMode: 'image',
   persistInputOnRestart: false,
   reuseTaskApiProfileTemporarily: false,
   alwaysShowRetryButton: false,

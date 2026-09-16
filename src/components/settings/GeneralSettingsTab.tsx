@@ -57,6 +57,21 @@ export default function GeneralSettingsTab({
         </div>
       </div>
       <div className="block">
+        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">画廊提交方式</span>
+        <Select
+          value={draft.gallerySubmitMode}
+          onChange={(value) => commitSettings({ ...draft, gallerySubmitMode: value as AppSettings['gallerySubmitMode'] })}
+          options={[
+            { label: '直接生图（保持现状）', value: 'image' },
+            { label: '新建 Agent 对话并跳转', value: 'agent' },
+          ]}
+          className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2 text-sm text-gray-700 outline-none transition dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200"
+        />
+        <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
+          选择「新建 Agent 对话」后，在画廊提交会新建一个对话、把当前输入作为消息发出，并自动跳转到对话页。
+        </div>
+      </div>
+      <div className="block">
         <div className="mb-1 flex items-center justify-between">
           <span className="block text-sm text-gray-600 dark:text-gray-300">提交任务后清空输入框</span>
           <button

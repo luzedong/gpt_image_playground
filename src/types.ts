@@ -107,6 +107,8 @@ export interface AppSettings {
   clearInputAfterSubmit: boolean
   /** 一次性迁移标记：旧版本该开关默认关闭，迁移后统一打开，之后以用户选择为准 */
   clearInputDefaultMigrated?: boolean
+  /** 画廊提交行为：image = 直接生图（默认），agent = 新建 Agent 对话并跳转 */
+  gallerySubmitMode: 'image' | 'agent'
   persistInputOnRestart: boolean
   reuseTaskApiProfileTemporarily: boolean
   alwaysShowRetryButton: boolean

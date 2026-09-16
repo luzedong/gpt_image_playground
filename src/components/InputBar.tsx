@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { addImageFromFile, addImageFromUrl, deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
+import { addImageFromFile, addImageFromUrl, deleteFavoriteCollection, useStore, submitGalleryInput, submitTask, submitAgentMessage, stopAgentResponse, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
 import { type TaskRecord } from '../types'
 import { getActiveAgentRounds } from '../lib/agentConversationState'
 import { getActiveApiProfile, getAgentImageApiProfile, normalizeSettings } from '../lib/apiProfiles'
@@ -517,7 +517,7 @@ export default function InputBar() {
     if (appMode === 'agent') {
       void submitAgentMessage()
     } else {
-      void submitTask()
+      void submitGalleryInput()
     }
   }, [appMode])
   const stopActiveAgentResponse = useCallback(() => {

@@ -1771,6 +1771,27 @@ export async function initStore() {
 }
 
 /** 提交新任务 */
+/**
+ * 画廊提交入口：按「画廊提交方式」设置决定直接生图，还是新建 Agent 对话并把当前输入发过去。
+ * 选择 Agent 时会新建一个对话、切到对话页，再复用 submitAgentMessage 的完整流程
+ * （参考图、遮罩、参数都按 Agent 规则处理）。
+ */
+export async function submitGalleryInput() {
+  const state = useStore.getState()
+  if (state.settings.gallerySubmitMode !== 'agent') {
+    await submitTask()
+    return
+  }
+  if (!state.prompt.trim()) {
+    state.showToast('请输入提示词', 'error')
+    return
+  }
+  const conversationId = state.createAgentConversation()
+  state.setActiveAgentConversationId(conversationId)
+  state.setAppMode('agent')
+  await submitAgentMessage()
+}
+
 export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
   if (gallerySubmissionInFlight) return
   gallerySubmissionInFlight = true
