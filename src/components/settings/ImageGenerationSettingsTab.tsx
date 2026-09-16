@@ -41,12 +41,15 @@ export default function ImageGenerationSettingsTab({ draft, activeProfile, setPa
         { label: 'medium', value: 'medium' },
         { label: 'high', value: 'high' },
       ]
-  const transparentOutputAvailable = appMode === 'gallery'
+  // 画廊选择「新建 Agent 对话」时，这个输入框实际就是 Agent 的输入框：
+  // 张数由模型决定、透明背景没有后处理，因此按 Agent 规则隐藏这两项画廊专属控件。
+  const usesAgentImageRules = appMode === 'agent' || (appMode === 'gallery' && draft.gallerySubmitMode === 'agent')
+  const transparentOutputAvailable = appMode === 'gallery' && !usesAgentImageRules
   const showTransparentOutputControl = transparentOutputAvailable && (params.output_format === 'png' || params.output_format === 'webp')
   const transparentOutputEnabled = showTransparentOutputControl && params.transparent_output
   const compressionDisabled = params.output_format === 'png' || isFalProvider
   const outputImageLimit = getOutputImageLimitForSettings(draft)
-  const agentAutoImageCount = appMode === 'agent'
+  const agentAutoImageCount = usesAgentImageRules
   const nDraftValue = Number(nInput)
   const effectiveNValue = Number.isNaN(nDraftValue) ? params.n : nDraftValue
   const streamConcurrentByN = activeProfile.provider === 'openai' && activeProfile.streamImages === true && effectiveNValue > 1
