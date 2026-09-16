@@ -175,7 +175,10 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     }`
   }
 
-  return (
+  // 用 portal 挂到 body：设置面板带 animate-modal-in（animation fill-mode: both 会保留
+  // transform），会让内部的 position:fixed 以面板为包含块，再被面板的 overflow-hidden 裁掉，
+  // 表现为弹窗位置偏移、超出边框的部分点不到。
+  return createPortal(
     <div
       data-no-drag-select
       className="fixed inset-0 z-[70] flex items-center justify-center p-4"
@@ -438,5 +441,6 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }
+import { createPortal } from 'react-dom'
