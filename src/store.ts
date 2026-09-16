@@ -1786,9 +1786,16 @@ export async function submitGalleryInput() {
     state.showToast('请输入提示词', 'error')
     return
   }
+  const { prompt, inputImages, maskDraft } = state
   const conversationId = state.createAgentConversation()
   state.setActiveAgentConversationId(conversationId)
   state.setAppMode('agent')
+  // setAppMode 会把输入区切换成 Agent 的草稿（新对话是空的），
+  // 这里把画廊里的提示词/参考图/遮罩写回去，再交给 Agent 的提交逻辑。
+  const next = useStore.getState()
+  next.setPrompt(prompt)
+  next.setInputImages(inputImages)
+  next.setMaskDraft(maskDraft)
   await submitAgentMessage()
 }
 
