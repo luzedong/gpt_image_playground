@@ -823,7 +823,11 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
       ? typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : true
       : true,
     clearInputDefaultMigrated: true,
-    gallerySubmitMode: record.gallerySubmitMode === 'agent' ? 'agent' : 'image',
+    // 旧版本默认「直接生图」，这里做一次性迁移改成「新建 Agent 对话」；迁移后仍尊重用户手动选择。
+    gallerySubmitMode: record.gallerySubmitMigrated === true
+      ? (record.gallerySubmitMode === 'image' ? 'image' : 'agent')
+      : 'agent',
+    gallerySubmitMigrated: true,
     persistInputOnRestart: typeof record.persistInputOnRestart === 'boolean' ? record.persistInputOnRestart : false,
     reuseTaskApiProfileTemporarily: typeof record.reuseTaskApiProfileTemporarily === 'boolean' ? record.reuseTaskApiProfileTemporarily : false,
     alwaysShowRetryButton: typeof record.alwaysShowRetryButton === 'boolean' ? record.alwaysShowRetryButton : false,
@@ -1409,7 +1413,8 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   activeProfileId: DEFAULT_OPENAI_PROFILE_ID,
   clearInputAfterSubmit: true,
   clearInputDefaultMigrated: true,
-  gallerySubmitMode: 'image',
+  gallerySubmitMode: 'agent',
+  gallerySubmitMigrated: true,
   persistInputOnRestart: false,
   reuseTaskApiProfileTemporarily: false,
   alwaysShowRetryButton: false,

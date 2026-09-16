@@ -109,6 +109,8 @@ export interface AppSettings {
   clearInputDefaultMigrated?: boolean
   /** 画廊提交行为：image = 直接生图（默认），agent = 新建 Agent 对话并跳转 */
   gallerySubmitMode: 'image' | 'agent'
+  /** 一次性迁移标记：把旧版本默认的「直接生图」统一改成「新建 Agent 对话」 */
+  gallerySubmitMigrated?: boolean
   persistInputOnRestart: boolean
   reuseTaskApiProfileTemporarily: boolean
   alwaysShowRetryButton: boolean
