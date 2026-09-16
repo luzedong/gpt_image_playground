@@ -699,6 +699,20 @@ function waitMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * 上游限流时优先按它的 Retry-After（或错误文案里的 retry-after=Ns）等待，最多 60 秒；
+ * 否则退回指数退避。之前固定等 1.5s/3s，会在限流窗口里白白耗尽重试次数。
+ */
+function resolveUpstreamRetryDelay(response, message, attempt) {
+  const headerSeconds = Number(response?.headers?.get?.('retry-after'))
+  const messageSeconds = Number(/retry[-_ ]?after[^0-9]{0,4}(\d+)/i.exec(String(message || ''))?.[1])
+  const seconds = Number.isFinite(headerSeconds) && headerSeconds > 0
+    ? headerSeconds
+    : Number.isFinite(messageSeconds) && messageSeconds > 0 ? messageSeconds : 0
+  if (seconds > 0) return Math.min(60_000, seconds * 1000)
+  return 1500 * (attempt + 1)
+}
+
 async function fetchUpstreamWithRetry(url, options = {}, timeoutMs = 600_000, imageRequest = false) {
   let lastError
   for (let attempt = 0; attempt < UPSTREAM_RETRY_ATTEMPTS; attempt += 1) {
@@ -718,7 +732,11 @@ async function fetchUpstreamWithRetry(url, options = {}, timeoutMs = 600_000, im
     const message = payload?.error?.message || `上游 API 返回 HTTP ${response.status}`
     if (!isRetryableUpstreamFailure(response.status, message, imageRequest) || attempt === UPSTREAM_RETRY_ATTEMPTS - 1) throw new Error(message)
     lastError = new Error(message)
-    await waitMs(1500 * (attempt + 1))
+    const delayMs = resolveUpstreamRetryDelay(response, message, attempt)
+    if (delayMs > 3000) {
+      console.log(JSON.stringify({ type: 'upstream_throttled', status: response.status, delayMs, attempt: attempt + 1, url }))
+    }
+    await waitMs(delayMs)
   }
   throw lastError || new Error('上游 API 请求失败')
 }
